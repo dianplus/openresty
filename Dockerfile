@@ -58,9 +58,9 @@ ARG _RESTY_CONFIG_DEPS="--with-openssl=/tmp/openssl-${RESTY_OPENSSL_VERSION} --w
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/' /etc/apk/repositories
 
 RUN \
-	addgroup -S nginx \
-	&& adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx \
-    && apk add --no-cache --virtual .build-deps \
+    addgroup -S nginx \
+ && adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx \
+ && apk add --no-cache --virtual .build-deps \
         build-base \
         curl \
         gd-dev \
@@ -72,7 +72,7 @@ RUN \
         perl-dev \
         readline-dev \
         zlib-dev \
-    && apk add --no-cache \
+ && apk add --no-cache \
         gd \
         geoip \
         libgcc \
@@ -81,30 +81,30 @@ RUN \
         lua-sec \
         lua-socket \
         zlib \
-    && cd /tmp \
-    && curl -fSL https://www.openssl.org/source/openssl-${RESTY_OPENSSL_VERSION}.tar.gz -o openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
-    && tar xzf openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
-    && curl -fSL https://ftp.pcre.org/pub/pcre/pcre-${RESTY_PCRE_VERSION}.tar.gz        -o pcre-${RESTY_PCRE_VERSION}.tar.gz \
-    && tar xzf pcre-${RESTY_PCRE_VERSION}.tar.gz \
-    && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz       -o openresty-${RESTY_VERSION}.tar.gz \
-    && tar xzf openresty-${RESTY_VERSION}.tar.gz \
-    && cd /tmp/openresty-${RESTY_VERSION} \
-    && git clone https://github.com/yzprofile/ngx_http_dyups_module.git ngx_http_dyups_module \
-    && cd ngx_http_dyups_module \
-    && git checkout tags/${DYUPS_VERSION} \
-    && cd .. \
-    && ./configure --prefix=${RESTY_INSTALL_PREFIX} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} -j$(getconf _NPROCESSORS_ONLN) \
-    && make -j$(getconf _NPROCESSORS_ONLN) \
-    && make install \
-    && cd /tmp \
-    && rm -rf \
+ && cd /tmp \
+ && curl -fSL https://www.openssl.org/source/openssl-${RESTY_OPENSSL_VERSION}.tar.gz -o openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
+ && tar xzf openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
+ && curl -fSL https://ftp.pcre.org/pub/pcre/pcre-${RESTY_PCRE_VERSION}.tar.gz        -o pcre-${RESTY_PCRE_VERSION}.tar.gz \
+ && tar xzf pcre-${RESTY_PCRE_VERSION}.tar.gz \
+ && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz       -o openresty-${RESTY_VERSION}.tar.gz \
+ && tar xzf openresty-${RESTY_VERSION}.tar.gz \
+ && cd /tmp/openresty-${RESTY_VERSION} \
+ && git clone https://github.com/yzprofile/ngx_http_dyups_module.git ngx_http_dyups_module \
+ && cd ngx_http_dyups_module \
+ && git checkout tags/${DYUPS_VERSION} \
+ && cd .. \
+ && ./configure --prefix=${RESTY_INSTALL_PREFIX} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} -j$(getconf _NPROCESSORS_ONLN) \
+ && make -j$(getconf _NPROCESSORS_ONLN) \
+ && make install \
+ && cd /tmp \
+ && rm -rf \
         openssl-${RESTY_OPENSSL_VERSION} \
         openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
         openresty-${RESTY_VERSION}.tar.gz openresty-${RESTY_VERSION} \
         pcre-${RESTY_PCRE_VERSION}.tar.gz pcre-${RESTY_PCRE_VERSION} \
-    && apk del .build-deps \
-    && ln -sf /dev/stdout /var/log/nginx/access.log \
-    && ln -sf /dev/stderr /var/log/nginx/error.log
+ && apk del .build-deps \
+ && ln -sf /dev/stdout /var/log/nginx/access.log \
+ && ln -sf /dev/stderr /var/log/nginx/error.log
 
 EXPOSE 80
 
