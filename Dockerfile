@@ -77,6 +77,7 @@ RUN \
         geoip \
         libgcc \
         libxslt \
+        lua5.1 \
         lua-sec \
         lua-socket \
         zlib \
@@ -92,7 +93,7 @@ RUN \
     && cd ngx_http_dyups_module \
     && git checkout tags/${DYUPS_VERSION} \
     && cd .. \
-    && ./configure --prefix=${RESTY_INSTALL_PREFIX} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} \
+    && ./configure --prefix=${RESTY_INSTALL_PREFIX} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} -j$(getconf _NPROCESSORS_ONLN) \
     && make -j$(getconf _NPROCESSORS_ONLN) \
     && make install \
     && cd /tmp \
@@ -110,5 +111,7 @@ EXPOSE 80
 # Add additional binaries into PATH for convenience
 ENV RESTY_DIR=/opt/openresty
 ENV PATH=$PATH:$RESTY_DIR/luajit/bin/:$RESTY_DIR/bin/
+ENV LUA_PATH=/usr/share/lua/5.1//?.lua;?.lua
+ENV LUA_CPATH=/usr/lib/lua/5.1/?.so;?.so
 
 ENTRYPOINT ["openresty", "-g", "daemon off;"]
