@@ -111,7 +111,7 @@ EXPOSE 80
 # Add additional binaries into PATH for convenience
 ENV RESTY_DIR=/opt/openresty
 ENV PATH=$PATH:$RESTY_DIR/luajit/bin/:$RESTY_DIR/bin/
-ENV LUA_PATH=/usr/share/lua/5.1//?.lua;?.lua
+ENV LUA_PATH=/usr/share/lua/5.1/?.lua;?.lua
 ENV LUA_CPATH=/usr/lib/lua/5.1/?.so;?.so
 
 ENTRYPOINT ["openresty", "-g", "daemon off;"]
