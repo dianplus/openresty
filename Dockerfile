@@ -3,7 +3,7 @@ LABEL maintainer="Canger <canger@dianjia.io>"
 
 # Docker Build Arguments
 ARG DYUPS_VERSION="v0.2.9"
-ARG RESTY_VERSION="1.11.2.4"
+ARG RESTY_VERSION="1.11.2.5"
 ARG RESTY_OPENSSL_VERSION="1.0.2l"
 ARG RESTY_PCRE_VERSION="8.41"
 ARG RESTY_INSTALL_PREFIX="/opt/openresty"
