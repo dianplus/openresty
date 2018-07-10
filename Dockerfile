@@ -1,11 +1,11 @@
-FROM alpine:3.6
+FROM  alpine:3.7
 LABEL maintainer="Canger <canger@dianjia.io>"
 
 # Docker Build Arguments
-ARG DYUPS_VERSION="v0.2.9"
-ARG RESTY_VERSION="1.11.2.5"
-ARG RESTY_OPENSSL_VERSION="1.0.2l"
-ARG RESTY_PCRE_VERSION="8.41"
+ARG DYUPS_VERSION="v0.2.10"
+ARG RESTY_VERSION="1.13.6.2"
+ARG RESTY_OPENSSL_VERSION="1.0.2o"
+ARG RESTY_PCRE_VERSION="8.42"
 ARG RESTY_INSTALL_PREFIX="/opt/openresty"
 ARG RESTY_CONFIG_OPTIONS="\
     --sbin-path=/usr/sbin/nginx \
@@ -89,7 +89,7 @@ RUN \
  && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz       -o openresty-${RESTY_VERSION}.tar.gz \
  && tar xzf openresty-${RESTY_VERSION}.tar.gz \
  && cd /tmp/openresty-${RESTY_VERSION} \
- && git clone https://github.com/yzprofile/ngx_http_dyups_module.git ngx_http_dyups_module \
+ && git clone https://github.com/dianplus/ngx_http_dyups_module.git ngx_http_dyups_module \
  && cd ngx_http_dyups_module \
  && git checkout tags/${DYUPS_VERSION} \
  && cd .. \
