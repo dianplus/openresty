@@ -1,22 +1,23 @@
-ARG RESTY_BASE_IMAGE="alpine"
-ARG RESTY_BASE_IMAGE_TAG="3.15"
+ARG RESTY_IMAGE_BASE="alpine"
+ARG RESTY_IMAGE_TAG="3.17"
 
-FROM ${RESTY_BASE_IMAGE}:${RESTY_BASE_IMAGE_TAG}
+FROM ${RESTY_IMAGE_BASE}:${RESTY_IMAGE_TAG}
 
 LABEL maintainer="Canger <canger@dianplus.cn>"
 
 # Docker Build Arguments
 
-ARG DYUPS_VERSION="v0.2.11"
+ARG DYUPS_VERSION="v2.3.4-dyups"
 ARG RESTY_INSTALL_PREFIX="/opt/openresty"
 
-ARG RESTY_BASE_IMAGE="alpine"
-ARG RESTY_BASE_IMAGE_TAG="3.15"
-ARG RESTY_VERSION="1.19.9.1"
-ARG RESTY_OPENSSL_VERSION="1.1.1m"
+ARG RESTY_IMAGE_BASE="alpine"
+ARG RESTY_IMAGE_TAG="3.17"
+ARG RESTY_VERSION="1.21.4.1"
+ARG RESTY_OPENSSL_VERSION="1.1.1s"
 ARG RESTY_OPENSSL_PATCH_VERSION="1.1.1f"
 ARG RESTY_OPENSSL_URL_BASE="https://www.openssl.org/source"
 ARG RESTY_PCRE_VERSION="8.45"
+ARG RESTY_PCRE_BUILD_OPTIONS="--enable-jit"
 ARG RESTY_PCRE_SHA256="4e6ce03e0336e8b4a3d6c2b70b1c5e18590a5673a98186da90d4f33c23defc09"
 ARG RESTY_J="1"
 ARG RESTY_CONFIG_OPTIONS="\
@@ -27,7 +28,7 @@ ARG RESTY_CONFIG_OPTIONS="\
     --http-log-path=/var/log/nginx/access.log \
     --pid-path=/var/run/nginx.pid \
     --lock-path=/var/run/nginx.lock \
-    --add-module=ngx_http_dyups_module \
+    --add-module=ngx_http_upstream_dyups_module \
     --with-compat \
     --with-file-aio \
     --with-http_addition_module \
@@ -52,7 +53,6 @@ ARG RESTY_CONFIG_OPTIONS="\
     --with-mail \
     --with-mail_ssl_module \
     --with-md5-asm \
-    --with-pcre-jit \
     --with-sha1-asm \
     --with-stream \
     --with-stream_ssl_module \
@@ -60,6 +60,7 @@ ARG RESTY_CONFIG_OPTIONS="\
     "
 ARG RESTY_CONFIG_OPTIONS_MORE=""
 ARG RESTY_LUAJIT_OPTIONS="--with-luajit-xcflags='-DLUAJIT_NUMMODE=2 -DLUAJIT_ENABLE_LUA52COMPAT'"
+ARG RESTY_PCRE_OPTIONS="--with-pcre-jit"
 
 ARG RESTY_ADD_PACKAGE_BUILDDEPS=""
 ARG RESTY_ADD_PACKAGE_RUNDEPS=""
@@ -73,13 +74,14 @@ ARG _RESTY_CONFIG_DEPS="--with-pcre \
     -Wl,-rpath,${RESTY_INSTALL_PREFIX}/pcre/lib:${RESTY_INSTALL_PREFIX}/openssl/lib' \
     "
 
-LABEL resty_image_base="${RESTY_BASE_IMAGE}"
-LABEL resty_image_tag="${RESTY_BASE_IMAGE_TAG}"
+LABEL resty_image_base="${RESTY_IMAGE_BASE}"
+LABEL resty_image_tag="${RESTY_IMAGE_TAG}"
 LABEL resty_version="${RESTY_VERSION}"
 LABEL resty_openssl_version="${RESTY_OPENSSL_VERSION}"
 LABEL resty_openssl_patch_version="${RESTY_OPENSSL_PATCH_VERSION}"
 LABEL resty_openssl_url_base="${RESTY_OPENSSL_URL_BASE}"
 LABEL resty_pcre_version="${RESTY_PCRE_VERSION}"
+LABEL resty_pcre_build_options="${RESTY_PCRE_BUILD_OPTIONS}"
 LABEL resty_pcre_sha256="${RESTY_PCRE_SHA256}"
 LABEL resty_config_options="${RESTY_CONFIG_OPTIONS}"
 LABEL resty_config_options_more="${RESTY_CONFIG_OPTIONS_MORE}"
@@ -88,6 +90,8 @@ LABEL resty_add_package_builddeps="${RESTY_ADD_PACKAGE_BUILDDEPS}"
 LABEL resty_add_package_rundeps="${RESTY_ADD_PACKAGE_RUNDEPS}"
 LABEL resty_eval_pre_configure="${RESTY_EVAL_PRE_CONFIGURE}"
 LABEL resty_eval_post_make="${RESTY_EVAL_POST_MAKE}"
+LABEL resty_luajit_options="${RESTY_LUAJIT_OPTIONS}"
+LABEL resty_pcre_options="${RESTY_PCRE_OPTIONS}"
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/' /etc/apk/repositories
 
@@ -128,12 +132,12 @@ RUN \
  && cd openssl-${RESTY_OPENSSL_VERSION} \
  && if [ $(echo ${RESTY_OPENSSL_VERSION} | cut -c 1-5) = "1.1.1" ] ; then \
       echo 'patching OpenSSL 1.1.1 for OpenResty' \
-      && curl -s https://raw.githubusercontent.com/openresty/openresty/master/patches/nssl-${RESTY_OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch | patch -p1 ; \
+      && curl -s https://raw.githubusercontent.com/openresty/openresty/master/patches/openssl-${RESTY_OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch | patch -p1 ; \
     fi \
  && if [ $(echo ${RESTY_OPENSSL_VERSION} | cut -c 1-5) = "1.1.0" ] ; then \
       echo 'patching OpenSSL 1.1.0 for OpenResty' \
-      && curl -s https://raw.githubusercontent.com/openresty/openresty/ed328977028c3ec3033bc25873ee360056e247cd/patches/nssl-1.1.0j-parallel_build_fix.patch | patch -p1 \
-      && curl -s https://raw.githubusercontent.com/openresty/openresty/master/patches/nssl-${RESTY_OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch | patch -p1 ; \
+      && curl -s https://raw.githubusercontent.com/openresty/openresty/ed328977028c3ec3033bc25873ee360056e247cd/patches/openssl-1.1.0j-parallel_build_fix.patch | patch -p1 \
+      && curl -s https://raw.githubusercontent.com/openresty/openresty/master/patches/openssl-${RESTY_OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch | patch -p1 ; \
     fi \
  && ./config \
       no-threads shared zlib -g \
@@ -155,19 +159,27 @@ RUN \
       --enable-jit \
       --enable-utf \
       --enable-unicode-properties \
+      ${RESTY_PCRE_BUILD_OPTIONS} \
  && make -j${RESTY_J} \
  && make -j${RESTY_J} install \
  && cd /tmp \
  && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz -o openresty-${RESTY_VERSION}.tar.gz \
  && tar xzf openresty-${RESTY_VERSION}.tar.gz \
  && cd /tmp/openresty-${RESTY_VERSION} \
- && git clone https://github.com/dianplus/ngx_http_dyups_module.git ngx_http_dyups_module \
- && cd ngx_http_dyups_module \
+ && git clone https://github.com/dianplus/tengine.git tengine \
+ && cd tengine \
  && git checkout tags/${DYUPS_VERSION} \
  && cd .. \
+ && cp -R tengine/modules/ngx_http_upstream_dyups_module . \
+ && rm -fr tengine \
  && eval ./configure \
-           -j${RESTY_J} --prefix=${RESTY_INSTALL_PREFIX} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} \
-           ${RESTY_CONFIG_OPTIONS_MORE} ${RESTY_LUAJIT_OPTIONS} \
+           -j${RESTY_J} \
+           --prefix=${RESTY_INSTALL_PREFIX} \
+           ${_RESTY_CONFIG_DEPS} \
+           ${RESTY_CONFIG_OPTIONS} \
+           ${RESTY_CONFIG_OPTIONS_MORE} \
+           ${RESTY_LUAJIT_OPTIONS} \
+           ${RESTY_PCRE_OPTIONS} \
  && make -j${RESTY_J} \
  && make -j${RESTY_J} install \
  && cd /tmp \
@@ -189,7 +201,11 @@ EXPOSE 80
 ENV RESTY_DIR=${RESTY_INSTALL_PREFIX}
 ENV PATH=$PATH:$RESTY_DIR/luajit/bin:$RESTY_DIR/nginx/sbin:$RESTY_DIR/bin
 
-CMD ["openresty", "-g", "daemon off;"]
+# Copy nginx configuration files
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.vh.default.conf /etc/nginx/conf.d/default.conf
+
+CMD ["$RESTY_DIR/bin/openresty", "-g", "daemon off;"]
 
 # Use SIGQUIT instead of default SIGTERM to cleanly drain requests
 # See https://github.com/openresty/docker-openresty/blob/master/README.md#tips--pitfalls
