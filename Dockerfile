@@ -2,7 +2,7 @@
 # https://github.com/openresty/docker-openresty
 
 ARG RESTY_IMAGE_BASE="alpine"
-ARG RESTY_IMAGE_TAG="3.20"
+ARG RESTY_IMAGE_TAG="3.22.1"
 
 FROM ${RESTY_IMAGE_BASE}:${RESTY_IMAGE_TAG}
 
@@ -10,12 +10,12 @@ LABEL maintainer="Analyser <analyser@gmail.com>"
 
 # Docker Build Arguments
 ARG RESTY_IMAGE_BASE="alpine"
-ARG RESTY_IMAGE_TAG="3.20"
-ARG RESTY_VERSION="1.27.1.1"
+ARG RESTY_IMAGE_TAG="3.22.1"
+ARG RESTY_VERSION="1.27.1.2"
 
 # https://github.com/openresty/openresty-packaging/blob/master/alpine/openresty-openssl3/APKBUILD
-ARG RESTY_OPENSSL_VERSION="3.0.15"
-ARG RESTY_OPENSSL_PATCH_VERSION="3.0.15"
+ARG RESTY_OPENSSL_VERSION="3.4.1"
+ARG RESTY_OPENSSL_PATCH_VERSION="3.4.1"
 ARG RESTY_OPENSSL_URL_BASE="https://github.com/openssl/openssl/releases/download/openssl-${RESTY_OPENSSL_VERSION}"
 # LEGACY:  "https://www.openssl.org/source/old/1.1.1"
 ARG RESTY_OPENSSL_BUILD_OPTIONS="enable-camellia enable-seed enable-rfc3779 enable-cms enable-md2 enable-rc5 \
@@ -103,7 +103,9 @@ ARG RESTY_ADD_PACKAGE_BUILDDEPS=""
 ARG RESTY_ADD_PACKAGE_RUNDEPS="lua-sec lua-socket"
 ARG RESTY_EVAL_PRE_CONFIGURE=""
 ARG RESTY_EVAL_POST_DOWNLOAD_PRE_CONFIGURE=""
+ARG RESTY_EVAL_PRE_MAKE=""
 ARG RESTY_EVAL_POST_MAKE=""
+ARG RESTY_STRIP_BINARIES=""
 
 # These are not intended to be user-specified
 ARG _RESTY_CONFIG_DEPS="--with-pcre \
@@ -132,7 +134,9 @@ LABEL resty_add_package_builddeps="${RESTY_ADD_PACKAGE_BUILDDEPS}"
 LABEL resty_add_package_rundeps="${RESTY_ADD_PACKAGE_RUNDEPS}"
 LABEL resty_eval_pre_configure="${RESTY_EVAL_PRE_CONFIGURE}"
 LABEL resty_eval_post_download_pre_configure="${RESTY_EVAL_POST_DOWNLOAD_PRE_CONFIGURE}"
+LABEL resty_eval_pre_make="${RESTY_EVAL_PRE_MAKE}"
 LABEL resty_eval_post_make="${RESTY_EVAL_POST_MAKE}"
+LABEL resty_strip_binaries="${RESTY_STRIP_BINARIES}"
 LABEL resty_luajit_options="${RESTY_LUAJIT_OPTIONS}"
 LABEL resty_pcre_options="${RESTY_PCRE_OPTIONS}"
 
@@ -143,6 +147,7 @@ RUN \
  && adduser -D -S -h /var/cache/openresty -s /sbin/nologin -G ${RESTY_USER_GROUP} ${RESTY_USER} \
  && apk add --no-cache --virtual .build-deps \
         build-base \
+        binutils \
         coreutils \
         curl \
         gd-dev \
@@ -172,8 +177,8 @@ RUN \
       -o openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
  && tar xzf openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
  && cd openssl-${RESTY_OPENSSL_VERSION} \
- && if [ $(echo ${RESTY_OPENSSL_VERSION} | cut -c 1-5) = "3.0.15" ] ; then \
-      echo 'patching OpenSSL 3.0.15 for OpenResty' \
+ && if [ $(echo ${RESTY_OPENSSL_VERSION} | cut -c 1-2) = "3." ] ; then \
+      echo 'patching OpenSSL 3.x for OpenResty' \
       && curl -s https://raw.githubusercontent.com/openresty/openresty/master/patches/openssl-${RESTY_OPENSSL_PATCH_VERSION}-sess_set_get_cb_yield.patch | patch -p1 ; \
     fi \
  && if [ $(echo ${RESTY_OPENSSL_VERSION} | cut -c 1-5) = "1.1.1" ] ; then \
@@ -225,6 +230,9 @@ RUN \
              ${RESTY_CONFIG_OPTIONS_MORE} \
              ${RESTY_LUAJIT_OPTIONS} \
              ${RESTY_PCRE_OPTIONS} \
+ && if [ -n "${RESTY_EVAL_PRE_MAKE}" ]; then \
+      eval $(echo ${RESTY_EVAL_PRE_MAKE}); \
+    fi \
  && make -j${RESTY_J} \
  && make -j${RESTY_J} install \
  && cd /tmp \
@@ -235,6 +243,16 @@ RUN \
       openssl-${RESTY_OPENSSL_VERSION}.tar.gz openssl-${RESTY_OPENSSL_VERSION} \
       pcre2-${RESTY_PCRE_VERSION}.tar.gz pcre2-${RESTY_PCRE_VERSION} \
       openresty-${RESTY_VERSION}.tar.gz openresty-${RESTY_VERSION} \
+ && if [ -n "${RESTY_STRIP_BINARIES}" ]; then \
+      echo 'stripping OpenResty binaries' \
+      && rm -Rf ${RESTY_INSTALL_PREFIX}/openssl3/bin/c_rehash ${RESTY_INSTALL_PREFIX}/openssl3/lib/*.a ${RESTY_INSTALL_PREFIX}/openssl3/include \
+      && find ${RESTY_INSTALL_PREFIX}/openssl3 -type f -perm -u+x -exec strip --strip-unneeded '{}' \; \
+      && rm -Rf ${RESTY_INSTALL_PREFIX}/pcre2/bin ${RESTY_INSTALL_PREFIX}/pcre2/share \
+      && find ${RESTY_INSTALL_PREFIX}/pcre2 -type f -perm -u+x -exec strip --strip-unneeded '{}' \; \
+      && rm -Rf ${RESTY_INSTALL_PREFIX}/luajit/lib/*.a ${RESTY_INSTALL_PREFIX}/luajit/share/man \
+      && find ${RESTY_INSTALL_PREFIX}/luajit -type f -perm -u+x -exec strip --strip-unneeded '{}' \; \
+      && find ${RESTY_INSTALL_PREFIX}/nginx -type f -perm -u+x -exec strip --strip-unneeded '{}' \; ; \ 
+    fi \
  && apk del .build-deps \
  && mkdir -p ${RESTY_RUN_PREFIX} \
  && mkdir -p ${RESTY_LOG_PREFIX} && chown ${RESTY_USER}:${RESTY_USER_GROUP} ${RESTY_LOG_PREFIX} \
@@ -243,7 +261,7 @@ RUN \
 
 # Add additional binaries into PATH for convenience
 ENV RESTY_DIR=${RESTY_INSTALL_PREFIX}
-ENV PATH=${RESTY_DIR}/bin:${RESTY_DIR}/luajit/bin:${RESTY_DIR}/nginx/sbin:${PATH}
+ENV PATH=${PATH}:${RESTY_DIR}/luajit/bin:${RESTY_DIR}/nginx/sbin:${RESTY_DIR}/bin
 
 # Copy nginx configuration files
 COPY nginx.conf ${RESTY_CFG_PREFIX}/nginx.conf
