@@ -1,4 +1,15 @@
-# OpenResty
+# OpenResty for DianPlus
+
+## Differences from upstream OpenResty alpine Dockerfile
+
+- Upstream reference: `https://github.com/openresty/docker-openresty/blob/master/alpine/Dockerfile`
+- Parameterized paths and layout: Configurable install prefix and module/config/log/run directories, adopting `/etc/openresty` structure for better system integration.
+- User and permissions: Creates `openresty` user and group with proper log directory ownership for minimal privilege operation.
+- Package sources and networking: Switches Alpine repository to Aliyun mirror for better network stability in China.
+- Lua runtime components: Additional runtime dependencies `lua-sec` and `lua-socket` for enhanced scripting capabilities.
+- Third-party modules: Integrates Tengine's `dyups` dynamic upstream module into the build process.
+- Configuration layout: Places default virtual host configuration in `/etc/openresty/conf.d/` to align with overall structure.
+- Port exposure: Explicitly exposes ports 80 and 443 for container orchestration and local development.
 
 ## Build image with podman
 
