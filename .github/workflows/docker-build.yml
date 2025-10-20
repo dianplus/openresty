@@ -56,7 +56,6 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha,prefix={{branch}}-
-            type=raw,value=${{ github.event.inputs.image_tag }},enable={{isTruthy(github.event.inputs.image_tag)}}
 
       - name: Set image tag for manual dispatch
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != ''
