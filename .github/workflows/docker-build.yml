@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - develop
+      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -12,6 +15,10 @@ on:
         default: ''
       push_image:
         description: 'Push image to registry'
+        type: boolean
+        default: true
+      use_cache:
+        description: 'Use build cache'
         type: boolean
         default: true
 
@@ -47,7 +54,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=ref,event=tag
             type=sha,prefix={{branch}}-
+            type=raw,value=${{ github.event.inputs.image_tag }},enable={{isTruthy(github.event.inputs.image_tag)}}
 
       - name: Set image tag for manual dispatch
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != ''
@@ -59,14 +68,20 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event.inputs.push_image != 'false' }}
           tags: |
             ${{ steps.meta.outputs.tags }}
             ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, github.event.inputs.image_tag) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=buildx
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=buildx
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          build-args: |
+            RESTY_J=4
 
       - name: Image digest
         id: docker_build
@@ -78,5 +93,7 @@ jobs:
           echo "- **Registry**: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tags**: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Platform**: linux/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platforms**: linux/amd64,linux/arm64" >> $GITHUB_STEP_SUMMARY
           echo "- **Push**: ${{ github.event.inputs.push_image != 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache**: ${{ github.event.inputs.use_cache != 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Time**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
