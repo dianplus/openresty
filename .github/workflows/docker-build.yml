@@ -48,7 +48,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=${{ github.event.inputs.image_tag }},enable={{isTruthy(github.event.inputs.image_tag)}}
 
       - name: Set image tag for manual dispatch
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != ''
@@ -64,7 +63,7 @@ jobs:
           push: ${{ github.event.inputs.push_image != 'false' }}
           tags: |
             ${{ steps.meta.outputs.tags }}
-            ${{ steps.manual_tag.outputs.image_tag != '' && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, steps.manual_tag.outputs.image_tag) || '' }}
+            ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' && format('{0}/{1}:{2}', env.REGISTRY, env.IMAGE_NAME, github.event.inputs.image_tag) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
