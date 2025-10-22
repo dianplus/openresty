@@ -1,0 +1,304 @@
+name: Aliyun Spot Runner Manager (Multi-Arch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        default: "create"
+        type: choice
+        options:
+          - create
+          - destroy
+          - list
+      architecture:
+        description: "Target architecture"
+        required: true
+        default: "arm64"
+        type: choice
+        options:
+          - arm64
+          - amd64
+      instance_type:
+        description: "ECS instance type"
+        required: false
+        default: "ecs.c8y.2xlarge"
+      image_id:
+        description: "ECS image ID"
+        required: false
+        default: "" # Will be dynamically determined based on architecture
+      runner_name:
+        description: "Runner name prefix"
+        required: false
+        default: "openresty-spot"
+
+env:
+  ALIYUN_REGION: cn-hangzhou
+  # Select availability zones based on architecture (confirmed by official documentation and actual testing)
+  AMD64_ZONES: cn-hangzhou-j,cn-hangzhou-k,cn-hangzhou-b,cn-hangzhou-g,cn-hangzhou-h,cn-hangzhou-i
+  ARM64_ZONES: cn-hangzhou-j,cn-hangzhou-k,cn-hangzhou-b
+
+jobs:
+  manage-runner:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
+        run: |
+          # Install Aliyun CLI
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf aliyun-cli-linux-latest-amd64.tgz
+          sudo mv aliyun /usr/local/bin/
+
+          # Configure authentication
+          aliyun configure set \
+            --profile default \
+            --mode AK \
+            --region ${{ env.ALIYUN_REGION }} \
+            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY_ID }} \
+            --access-key-secret ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Create Spot Instance
+        if: github.event.inputs.action == 'create'
+        run: |
+          # Select default values based on architecture
+          if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
+            INSTANCE_TYPE="${{ github.event.inputs.instance_type || 'ecs.g8y.large' }}"
+            IMAGE_ID="${{ github.event.inputs.image_id || secrets.ALIYUN_ARM64_IMAGE_ID }}"
+            RUNNER_ARCH="arm64"
+          else
+            INSTANCE_TYPE="${{ github.event.inputs.instance_type || 'ecs.c6.large' }}"
+            IMAGE_ID="${{ github.event.inputs.image_id || secrets.ALIYUN_AMD64_IMAGE_ID }}"
+            RUNNER_ARCH="x64"
+          fi
+
+          # Generate random instance name
+          INSTANCE_NAME="${{ github.event.inputs.runner_name }}-${{ github.event.inputs.architecture }}-$(date +%s)"
+
+          # Create user data script
+          cat > user_data.sh << 'EOF'
+          #!/bin/bash
+          # Install necessary software
+          yum update -y
+          yum install -y docker git curl wget
+          systemctl start docker
+          systemctl enable docker
+
+          # Create runner user
+          useradd -m -s /bin/bash runner
+          usermod -aG docker runner
+
+          # Download and configure GitHub Actions Runner
+          cd /home/runner
+          sudo -u runner bash -c '
+            if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
+              RUNNER_VERSION="${RUNNER_VERSION:-$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed "s/^v//")}"
+              FILE="actions-runner-linux-arm64-${RUNNER_VERSION}.tar.gz"
+              URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${FILE}"
+              echo "Downloading GitHub Actions Runner ${RUNNER_VERSION} (arm64)..."
+              curl -fL -o "$FILE" "$URL"
+              tar xzf "$FILE"
+              ./config.sh --url https://github.com/dianplus/openresty --token $GITHUB_TOKEN --name $INSTANCE_NAME --labels self-hosted,linux,ARM64 --unattended
+            else
+              RUNNER_VERSION="${RUNNER_VERSION:-$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed "s/^v//")}"
+              FILE="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+              URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${FILE}"
+              echo "Downloading GitHub Actions Runner ${RUNNER_VERSION} (x64)..."
+              curl -fL -o "$FILE" "$URL"
+              tar xzf "$FILE"
+              ./config.sh --url https://github.com/dianplus/openresty --token $GITHUB_TOKEN --name $INSTANCE_NAME --labels self-hosted,linux,X64 --unattended
+            fi
+            ./run.sh &
+          '
+
+          # Workflow will automatically clean up instances, no need to set scheduled tasks
+          EOF
+
+          # Query available instance types and prices
+          echo "Querying ${{ github.event.inputs.architecture }} instance types and spot prices..."
+          
+          # Select instance type pattern based on architecture
+          if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
+            TYPE_PATTERN="^ecs\\.g8y\\.[248]xlarge$|^ecs\\.g8y\\.16xlarge$"
+            DEFAULT_TYPE="ecs.g8y.2xlarge"
+          else
+            TYPE_PATTERN="^ecs\\.c6\\.[248]xlarge$|^ecs\\.c6\\.16xlarge$"
+            DEFAULT_TYPE="ecs.c6.2xlarge"
+          fi
+          
+          # Query available resources
+          AVAILABLE_TYPES=$(aliyun ecs DescribeAvailableResource \
+            --RegionId ${{ env.ALIYUN_REGION }} \
+            --DestinationResource InstanceType \
+            --Output json | jq -r ".AvailableZones.AvailableZone[].AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | select(.Value | test(\"$TYPE_PATTERN\")) | .Value" | sort -u)
+          
+          if [ -z "$AVAILABLE_TYPES" ]; then
+            echo "No available ${{ github.event.inputs.architecture }} instance types found, using default type"
+            AVAILABLE_TYPES=$DEFAULT_TYPE
+          fi
+          
+          echo "Available instance types: $AVAILABLE_TYPES"
+          
+          # Query spot prices and select lowest price
+          BEST_TYPE=""
+          BEST_PRICE=999999
+          
+          for TYPE in $AVAILABLE_TYPES; do
+            echo "Querying spot price for instance type $TYPE..."
+            
+            # Query spot price
+            PRICE_INFO=$(aliyun ecs DescribeSpotPriceHistory \
+              --RegionId ${{ env.ALIYUN_REGION }} \
+              --InstanceType $TYPE \
+              --StartTime $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+              --EndTime $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+              --Output json 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$PRICE_INFO" ]; then
+              # Get average price
+              AVG_PRICE=$(echo $PRICE_INFO | jq -r '.SpotPrices.SpotPriceType[] | .SpotPrice' | awk '{sum+=$1; count++} END {if(count>0) print sum/count; else print "0"}')
+              
+              if [ "$AVG_PRICE" != "0" ] && [ $(echo "$AVG_PRICE < $BEST_PRICE" | bc -l) -eq 1 ]; then
+                BEST_TYPE=$TYPE
+                BEST_PRICE=$AVG_PRICE
+                echo "Found better instance type: $TYPE, average price: $AVG_PRICE"
+              fi
+            fi
+          done
+          
+          if [ -z "$BEST_TYPE" ]; then
+            echo "Unable to get instance price information, using default instance type"
+            BEST_TYPE=$DEFAULT_TYPE
+            BEST_PRICE=0.5
+          fi
+          
+          # Calculate maximum price limit (120% of lowest price)
+          MAX_PRICE=$(echo "$BEST_PRICE * 1.2" | bc -l)
+          echo "Selected instance type: $BEST_TYPE, average price: $BEST_PRICE, maximum price limit: $MAX_PRICE"
+          
+          # Select availability zone based on architecture and create ECS instance
+          if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
+            ZONES="${{ env.ARM64_ZONES }}"
+          else
+            ZONES="${{ env.AMD64_ZONES }}"
+          fi
+          
+          INSTANCE_ID=""
+          SELECTED_ZONE=""
+          
+          for ZONE in $(echo $ZONES | tr ',' ' '); do
+            echo "Attempting to create ${{ github.event.inputs.architecture }} instance in zone $ZONE..."
+            
+            RESULT=$(aliyun ecs RunInstances \
+              --RegionId ${{ env.ALIYUN_REGION }} \
+              --ZoneId $ZONE \
+              --ImageId $IMAGE_ID \
+              --InstanceType $BEST_TYPE \
+              --InstanceName $INSTANCE_NAME \
+              --SecurityGroupId ${{ secrets.ALIYUN_SECURITY_GROUP_ID }} \
+              --VSwitchId ${{ secrets.ALIYUN_VSWITCH_ID }} \
+              --UserData $(base64 -w 0 user_data.sh) \
+              --SpotStrategy SpotAsPriceGo \
+              --SpotPriceLimit $MAX_PRICE \
+              --InternetMaxBandwidthOut 5 \
+              --SystemDisk.Category cloud_ssd \
+              --SystemDisk.Size 40 \
+              --Output json 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
+              INSTANCE_ID=$(echo $RESULT | jq -r '.InstanceIdSets.InstanceIdSet[0]')
+              if [ "$INSTANCE_ID" != "null" ] && [ -n "$INSTANCE_ID" ]; then
+                SELECTED_ZONE=$ZONE
+                echo "Successfully created instance in zone $ZONE: $INSTANCE_ID"
+                break
+              fi
+            fi
+            
+            echo "Failed to create instance in zone $ZONE, trying next zone..."
+            sleep 2
+          done
+          
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "null" ]; then
+            echo "Unable to create ${{ github.event.inputs.architecture }} instance in any zone, please check configuration"
+            exit 1
+          fi
+
+          echo "Created instance: $INSTANCE_ID in zone: $SELECTED_ZONE with type: $BEST_TYPE"
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
+          echo "SELECTED_ZONE=$SELECTED_ZONE" >> $GITHUB_ENV
+          echo "INSTANCE_TYPE=$BEST_TYPE" >> $GITHUB_ENV
+          echo "MAX_PRICE=$MAX_PRICE" >> $GITHUB_ENV
+
+      - name: Wait for Runner Registration
+        if: github.event.inputs.action == 'create'
+        run: |
+          echo "Waiting for runner to register..."
+          sleep 60
+
+          # Check if runner registered successfully
+          for i in {1..10}; do
+            if gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ env.INSTANCE_NAME }}") | .status' | grep -q "online"; then
+              echo "Runner registered successfully!"
+              break
+            fi
+            echo "Waiting... ($i/10)"
+            sleep 30
+          done
+
+      - name: Trigger Build
+        if: github.event.inputs.action == 'create'
+        run: |
+          # Trigger corresponding build workflow based on architecture
+          if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
+            gh workflow run auto-arm64-build.yml \
+              --ref develop \
+              -f image_tag="${{ env.INSTANCE_NAME }}-$(date +%Y%m%d%H%M%S)" \
+              -f push_image=true
+          else
+            gh workflow run auto-amd64-build.yml \
+              --ref develop \
+              -f image_tag="${{ env.INSTANCE_NAME }}-$(date +%Y%m%d%H%M%S)" \
+              -f push_image=true
+          fi
+
+      - name: List Running Instances
+        if: github.event.inputs.action == 'list'
+        run: |
+          aliyun ecs DescribeInstances \
+            --RegionId ${{ env.ALIYUN_REGION }} \
+            --InstanceName "${{ github.event.inputs.runner_name }}-*" \
+            --Output table
+
+      - name: Destroy Instance
+        if: github.event.inputs.action == 'destroy'
+        run: |
+          # Find and delete instances
+          INSTANCE_IDS=$(aliyun ecs DescribeInstances \
+            --RegionId ${{ env.ALIYUN_REGION }} \
+            --InstanceName "${{ github.event.inputs.runner_name }}-*" \
+            --Output json --query 'Instances.Instance[].InstanceId' | jq -r '.[]')
+
+          for INSTANCE_ID in $INSTANCE_IDS; do
+            echo "Destroying instance: $INSTANCE_ID"
+            aliyun ecs DeleteInstance --InstanceId $INSTANCE_ID --Force true
+          done
+
+      - name: Cleanup Summary
+        run: |
+          echo "## Aliyun Spot Runner Management" >> $GITHUB_STEP_SUMMARY
+          echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.ALIYUN_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance Type**: ${{ github.event.inputs.instance_type }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.action }}" = "create" ]; then
+            echo "- **Instance ID**: ${{ env.INSTANCE_ID }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Instance Name**: ${{ env.INSTANCE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          fi

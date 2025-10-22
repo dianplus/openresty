@@ -1,12 +1,6 @@
-name: Docker Build
+name: Docker Build (Legacy - Use Auto AMD64 Build instead)
 
 on:
-  push:
-    branches:
-      - develop
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -63,11 +57,11 @@ jobs:
           echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
         id: manual_tag
 
-      - name: Build Docker image
+      - name: Build Docker image (AMD64 only)
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: ${{ github.event.inputs.push_image != 'false' }}
           tags: |
             ${{ steps.meta.outputs.tags }}
@@ -92,7 +86,7 @@ jobs:
           echo "- **Registry**: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tags**: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Platforms**: linux/amd64,linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform**: linux/amd64" >> $GITHUB_STEP_SUMMARY
           echo "- **Push**: ${{ github.event.inputs.push_image != 'false' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Cache**: ${{ github.event.inputs.use_cache != 'false' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Build Time**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,311 @@
+name: Auto ARM64 Build with Spot Instance
+
+on:
+  push:
+    branches:
+      - develop
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Custom image tag'
+        required: false
+        default: ''
+
+env:
+  ALIYUN_REGION: cn-hangzhou
+  # ARM64 supported availability zones (sorted by priority, based on actual testing confirmed zones)
+  ARM64_ZONES: cn-hangzhou-j,cn-hangzhou-k,cn-hangzhou-b
+  RUNNER_NAME: openresty-arm64-spot
+
+jobs:
+  create-spot-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.create.outputs.instance_id }}
+      runner_name: ${{ steps.create.outputs.runner_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
+        run: |
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf aliyun-cli-linux-latest-amd64.tgz
+          sudo mv aliyun /usr/local/bin/
+          
+          aliyun configure set \
+            --profile default \
+            --mode AK \
+            --region ${{ env.ALIYUN_REGION }} \
+            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY_ID }} \
+            --access-key-secret ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Download Spot Instance Advisor
+        run: |
+          wget https://github.com/maskshell/spot-instance-advisor/releases/download/v1.0.0/spot-instance-advisor-linux-amd64
+          chmod +x spot-instance-advisor-linux-amd64
+          sudo mv spot-instance-advisor-linux-amd64 /usr/local/bin/spot-instance-advisor
+
+      - name: Find Cheapest Instance Type
+        id: find_cheapest
+        run: |
+          # Query all ARM64 instance type prices (8c16g to 64c128g)
+          echo "Querying all ARM64 instance type prices..."
+          ALL_PRICES=$(./spot-instance-advisor \
+            -accessKeyId="${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
+            -accessKeySecret="${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}" \
+            -region=cn-hangzhou \
+            -family="ecs.c8y,ecs.c8r" \
+            -mincpu=8 -maxcpu=64 -minmem=16 -maxmem=128 \
+            -resolution=7 -limit=20 --json)
+          
+          # Select instance with lowest price per core
+          CHEAPEST_INSTANCE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .instanceTypeId')
+          CHEAPEST_PRICE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .pricePerCore')
+          CHEAPEST_ZONE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .zoneId')
+          
+          # Set spot price limit to 120% of lowest price
+          SPOT_PRICE_LIMIT=$(echo "$CHEAPEST_PRICE * 1.2" | bc -l)
+          
+          echo "Cheapest instance type: $CHEAPEST_INSTANCE"
+          echo "Price per core: $CHEAPEST_PRICE"
+          echo "Availability zone: $CHEAPEST_ZONE"
+          echo "Spot price limit: $SPOT_PRICE_LIMIT"
+          
+          echo "cheapest_instance=$CHEAPEST_INSTANCE" >> $GITHUB_OUTPUT
+          echo "cheapest_zone=$CHEAPEST_ZONE" >> $GITHUB_OUTPUT
+          echo "spot_price_limit=$SPOT_PRICE_LIMIT" >> $GITHUB_OUTPUT
+
+      - name: Create Spot Instance
+        id: create
+        run: |
+          RUNNER_NAME="${{ env.RUNNER_NAME }}-$(date +%s)"
+          
+          # Create user data script
+          cat > user_data.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          yum update -y
+          
+          # Install necessary software
+          yum install -y docker git curl wget jq
+          systemctl start docker
+          systemctl enable docker
+          
+          # Create runner user
+          useradd -m -s /bin/bash runner
+          usermod -aG docker runner
+          
+          # Download GitHub Actions Runner
+          cd /home/runner
+          sudo -u runner bash -c '
+            RUNNER_VERSION="${RUNNER_VERSION:-$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed "s/^v//")}"
+            ARCH="arm64"
+            FILE="actions-runner-linux-${ARCH}-${RUNNER_VERSION}.tar.gz"
+            URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${FILE}"
+            echo "Downloading GitHub Actions Runner ${RUNNER_VERSION} (${ARCH})..."
+            curl -fL -o "$FILE" "$URL"
+            tar xzf "$FILE"
+            rm -f "$FILE"
+          '
+          
+          # Configure runner
+          cd /home/runner
+          sudo -u runner bash -c '
+            ./config.sh --url https://github.com/dianplus/openresty --token $GITHUB_TOKEN --name $RUNNER_NAME --labels self-hosted,linux,ARM64 --unattended --replace
+            nohup ./run.sh > runner.log 2>&1 &
+          '
+          
+          # Workflow will handle cleanup automatically after build completion
+          EOF
+          
+          # spot-instance-advisor tool has completed instance type query and price comparison
+          echo "Using dynamically selected instance type and price..."
+          
+          # Use dynamically selected instance type and price
+          BEST_TYPE="${{ steps.find_cheapest.outputs.cheapest_instance }}"
+          BEST_ZONE="${{ steps.find_cheapest.outputs.cheapest_zone }}"
+          MAX_PRICE="${{ steps.find_cheapest.outputs.spot_price_limit }}"
+          
+          echo "Using dynamically selected instance type: $BEST_TYPE"
+          echo "Recommended availability zone: $BEST_ZONE"
+          echo "Spot price limit: $MAX_PRICE"
+          
+          # Dynamically get list of zones supporting BEST_TYPE, prioritize advisor recommended zone
+          echo "Querying zones supporting instance type $BEST_TYPE..."
+          RAW_ZONES=$(aliyun ecs DescribeAvailableResource \
+            --RegionId ${{ env.ALIYUN_REGION }} \
+            --DestinationResource InstanceType \
+            --Output json 2>/dev/null)
+
+          DYNAMIC_ZONES=$(echo "$RAW_ZONES" | jq -r \
+            --arg TYPE "$BEST_TYPE" \
+            '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | any(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
+
+          if [ -n "$BEST_ZONE" ]; then
+            ZONES="$BEST_ZONE $DYNAMIC_ZONES"
+          else
+            ZONES="$DYNAMIC_ZONES"
+          fi
+
+          # If no zones found through dynamic query, fallback to preset zones
+          if [ -z "$ZONES" ]; then
+            ZONES="${{ env.ARM64_ZONES }}"
+          fi
+          INSTANCE_ID=""
+          SELECTED_ZONE=""
+          
+          for ZONE in $(echo $ZONES | tr ',' ' ' | xargs -n1 | sort -u); do
+            echo "Attempting to create ARM64 instance in zone $ZONE..."
+            
+            # Create ECS instance (using optimal instance type)
+            RESULT=$(aliyun ecs RunInstances \
+              --RegionId ${{ env.ALIYUN_REGION }} \
+              --ZoneId $ZONE \
+              --ImageId ${{ secrets.ALIYUN_ARM64_IMAGE_ID }} \
+              --InstanceType $BEST_TYPE \
+              --InstanceName $RUNNER_NAME \
+              --SecurityGroupId ${{ secrets.ALIYUN_SECURITY_GROUP_ID }} \
+              --VSwitchId ${{ secrets.ALIYUN_VSWITCH_ID }} \
+              --UserData $(base64 -w 0 user_data.sh) \
+              --SpotStrategy SpotAsPriceGo \
+              --SpotPriceLimit $MAX_PRICE \
+              --InternetMaxBandwidthOut 5 \
+              --SystemDisk.Category cloud_ssd \
+              --SystemDisk.Size 40 \
+              --Output json 2>/dev/null)
+            
+            if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
+              INSTANCE_ID=$(echo $RESULT | jq -r '.InstanceIdSets.InstanceIdSet[0]')
+              if [ "$INSTANCE_ID" != "null" ] && [ -n "$INSTANCE_ID" ]; then
+                SELECTED_ZONE=$ZONE
+                echo "Successfully created instance in zone $ZONE: $INSTANCE_ID"
+                break
+              fi
+            fi
+            
+            echo "Failed to create instance in zone $ZONE, trying next zone..."
+            sleep 2
+          done
+          
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "null" ]; then
+            echo "Unable to create ARM64 instance in any zone, please check configuration"
+            exit 1
+          fi
+          
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "runner_name=$RUNNER_NAME" >> $GITHUB_OUTPUT
+          echo "selected_zone=$SELECTED_ZONE" >> $GITHUB_OUTPUT
+          echo "instance_type=$BEST_TYPE" >> $GITHUB_OUTPUT
+          echo "max_price=$MAX_PRICE" >> $GITHUB_OUTPUT
+          echo "Created instance: $INSTANCE_ID in zone: $SELECTED_ZONE with type: $BEST_TYPE"
+
+      - name: Wait for Runner Registration
+        run: |
+          echo "Waiting for runner to register..."
+          sleep 120
+          
+          # Check runner status
+          for i in {1..20}; do
+            if gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ steps.create.outputs.runner_name }}") | .status' | grep -q "online"; then
+              echo "✅ Runner registered successfully!"
+              break
+            fi
+            echo "⏳ Waiting for runner... ($i/20)"
+            sleep 30
+          done
+
+  build-arm64:
+    needs: create-spot-runner
+    runs-on: [self-hosted, linux, ARM64]
+    if: always() && needs.create-spot-runner.result == 'success'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/dianplus/openresty
+          tags: |
+            type=ref,event=branch,suffix=-arm64
+            type=ref,event=tag,suffix=-arm64
+            type=sha,prefix={{branch}}-arm64-
+            type=raw,value=${{ github.event.inputs.image_tag }},enable={{isTruthy(github.event.inputs.image_tag)}}
+
+      - name: Build Docker image (Native ARM64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/dianplus/openresty:buildcache-arm64
+          cache-to: type=registry,ref=ghcr.io/dianplus/openresty:buildcache-arm64,mode=max
+          build-args: |
+            RESTY_J=16
+
+      - name: Cleanup ECS Instance
+        if: always()
+        run: |
+          echo "Cleaning up ECS instance: ${{ steps.create_instance.outputs.instance_id }}"
+          aliyun ecs DeleteInstance --InstanceId ${{ steps.create_instance.outputs.instance_id }} --Force true
+          echo "ECS instance deleted successfully"
+
+      - name: Build summary
+        run: |
+          echo "## Native ARM64 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: ghcr.io" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: dianplus/openresty" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags**: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform**: linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "- **Runner**: ${{ needs.create-spot-runner.outputs.runner_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Time**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Native ARM64 build completed!**" >> $GITHUB_STEP_SUMMARY
+
+  cleanup:
+    needs: [create-spot-runner, build-arm64]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Configure Aliyun CLI
+        run: |
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf aliyun-cli-linux-latest-amd64.tgz
+          sudo mv aliyun /usr/local/bin/
+          
+          aliyun configure set \
+            --profile default \
+            --mode AK \
+            --region ${{ env.ALIYUN_REGION }} \
+            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY_ID }} \
+            --access-key-secret ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+
+      - name: Cleanup Spot Instance
+        if: needs.create-spot-runner.outputs.instance_id != ''
+        run: |
+          echo "Cleaning up instance: ${{ needs.create-spot-runner.outputs.instance_id }}"
+          aliyun ecs DeleteInstance --InstanceId ${{ needs.create-spot-runner.outputs.instance_id }} --Force true
+          echo "✅ Instance cleaned up successfully"
