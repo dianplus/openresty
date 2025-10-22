@@ -269,9 +269,51 @@ aliyun ecs DescribeImages \
   --ImageOwnerAlias system \
   --Output table
 
-# Recommended images
-# AMD64: aliyun_2_1903_64_20G_alibase_20220322.vhd
-# ARM64: aliyun_2_1903_arm64_20G_alibase_20220322.vhd
+# Recommended images (Updated 2024)
+# Alibaba Cloud Linux 3 (Recommended - Optimized for Aliyun)
+# AMD64: aliyun_3_1903_64_20G_alibase_20241216.vhd
+# ARM64: aliyun_3_1903_arm64_20G_alibase_20241216.vhd
+
+# Note: Image IDs may vary by region. Check Aliyun Console for latest versions.
+```
+
+#### Image Selection Guide
+
+**Recommended Images (2024):**
+
+**Alibaba Cloud Linux 3** (Recommended)
+- Optimized for Aliyun infrastructure
+- Better integration with Aliyun services
+- Excellent performance for CI/CD workloads
+- Uses yum package manager (compatible with workflows)
+- Long-term support and regular updates
+- Best choice for Aliyun ECS instances
+
+**How to Get Latest Image IDs:**
+
+```bash
+# List Alibaba Cloud Linux 3 AMD64 images
+aliyun ecs DescribeImages \
+  --RegionId cn-hangzhou \
+  --Architecture x86_64 \
+  --ImageOwnerAlias system \
+  --ImageName "Alibaba Cloud Linux 3" \
+  --Output table
+
+# List Alibaba Cloud Linux 3 ARM64 images
+aliyun ecs DescribeImages \
+  --RegionId cn-hangzhou \
+  --Architecture arm64 \
+  --ImageOwnerAlias system \
+  --ImageName "Alibaba Cloud Linux 3" \
+  --Output table
+
+# Alternative: List all Alibaba Cloud Linux images
+aliyun ecs DescribeImages \
+  --RegionId cn-hangzhou \
+  --ImageOwnerAlias system \
+  --ImageName "Alibaba Cloud Linux" \
+  --Output table
 ```
 
 ### 2. GitHub Secrets Configuration
@@ -284,8 +326,8 @@ Add the following Secrets in repository settings:
 | `ALIYUN_ACCESS_KEY_SECRET` | Aliyun Access Key Secret | xxx... |
 | `ALIYUN_SECURITY_GROUP_ID` | Security Group ID | sg-xxx |
 | `ALIYUN_VSWITCH_ID` | Primary VSwitch ID (for fallback) | vsw-xxx |
-| `ALIYUN_ARM64_IMAGE_ID` | ARM64 Image ID | m-xxx |
-| `ALIYUN_AMD64_IMAGE_ID` | AMD64 Image ID | m-xxx |
+| `ALIYUN_ARM64_IMAGE_ID` | ARM64 Image ID (Alibaba Cloud Linux 3 recommended) | m-xxx |
+| `ALIYUN_AMD64_IMAGE_ID` | AMD64 Image ID (Alibaba Cloud Linux 3 recommended) | m-xxx |
 | `ALIYUN_INSTANCE_TYPE` | ARM64 Instance Type | Dynamic Selection* |
 
 **Note**: Since workflows dynamically select availability zones, it's recommended to create VSwitches in multiple zones. `ALIYUN_VSWITCH_ID` is used as fallback, and workflows will prioritize VSwitches corresponding to dynamically queried zones.
