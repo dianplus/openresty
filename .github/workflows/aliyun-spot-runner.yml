@@ -43,9 +43,9 @@ jobs:
   manage-runner:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       packages: write
-      actions: write
 
     steps:
       - name: Checkout repository
@@ -208,7 +208,6 @@ jobs:
               --UserData $(base64 -w 0 user_data.sh) \
               --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
-              --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_essd \
               --SystemDisk.Size 40 \
               2>/dev/null)
@@ -246,7 +245,7 @@ jobs:
 
           # Check if runner registered successfully
           for i in {1..10}; do
-            if gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ env.INSTANCE_NAME }}") | .status' | grep -q "online"; then
+            if GH_TOKEN=${{ github.token }} gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ env.INSTANCE_NAME }}") | .status' | grep -q "online"; then
               echo "Runner registered successfully!"
               break
             fi

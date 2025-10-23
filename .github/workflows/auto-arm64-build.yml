@@ -23,6 +23,9 @@ env:
 jobs:
   create-spot-runner:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     outputs:
       instance_id: ${{ steps.create.outputs.instance_id }}
       runner_name: ${{ steps.create.outputs.runner_name }}
@@ -196,7 +199,7 @@ jobs:
           for ZONE in $(echo $ZONES | tr ',' ' ' | xargs -n1 | sort -u); do
             echo "Attempting to create ARM64 instance in zone $ZONE..."
             
-            # Select VSwitch based on zone
+            # Select VSwitch based on zone with intelligent fallback
             case $ZONE in
               cn-hangzhou-b)
                 VSWITCH_ID="${{ secrets.ALIYUN_VSWITCH_ID_B }}"
@@ -221,9 +224,24 @@ jobs:
                 ;;
             esac
             
+            # If no zone-specific VSwitch configured, try to find one dynamically
             if [ -z "$VSWITCH_ID" ]; then
-              echo "Warning: No VSwitch configured for zone $ZONE, using default VSwitch"
-              VSWITCH_ID="${{ secrets.ALIYUN_VSWITCH_ID }}"
+              echo "No zone-specific VSwitch configured for $ZONE, searching for available VSwitch..."
+              
+              # Query available VSwitches in the zone
+              AVAILABLE_VSWITCHES=$(aliyun vpc DescribeVSwitches \
+                --RegionId ${{ env.ALIYUN_REGION }} \
+                --ZoneId $ZONE \
+                --VpcId ${{ secrets.ALIYUN_VPC_ID }} \
+                --output json | jq -r '.VSwitches.VSwitch[] | select(.Status=="Available") | .VSwitchId' | head -1)
+              
+              if [ -n "$AVAILABLE_VSWITCHES" ]; then
+                VSWITCH_ID="$AVAILABLE_VSWITCHES"
+                echo "Found available VSwitch: $VSWITCH_ID in zone $ZONE"
+              else
+                echo "Warning: No available VSwitch found in zone $ZONE, using default VSwitch"
+                VSWITCH_ID="${{ secrets.ALIYUN_VSWITCH_ID }}"
+              fi
             fi
             
             # Create ECS instance (using optimal instance type)
@@ -244,7 +262,6 @@ jobs:
               --UserData $(base64 -w 0 user_data.sh) \
               --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
-              --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_essd \
               --SystemDisk.Size 40)
             
@@ -279,6 +296,8 @@ jobs:
           echo "Created instance: $INSTANCE_ID in zone: $SELECTED_ZONE with type: $BEST_TYPE"
 
       - name: Wait for Runner Registration
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Waiting for runner to register..."
           sleep 120

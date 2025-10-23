@@ -23,6 +23,9 @@ env:
 jobs:
   create-spot-runner:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     outputs:
       instance_id: ${{ steps.create.outputs.instance_id }}
       runner_name: ${{ steps.create.outputs.runner_name }}
@@ -239,7 +242,6 @@ jobs:
               --UserData $(base64 -w 0 user_data.sh) \
               --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
-              --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_essd \
               --SystemDisk.Size 40 \
               2>/dev/null)
@@ -270,6 +272,8 @@ jobs:
           echo "Created instance: $INSTANCE_ID in zone: $SELECTED_ZONE with type: $BEST_TYPE"
 
       - name: Wait for Runner Registration
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "Waiting for runner to register..."
           sleep 120

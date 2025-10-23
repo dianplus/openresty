@@ -93,12 +93,20 @@ Multi-architecture merged available: `ghcr.io/dianplus/openresty:<tag>` (manifes
 - `ALIYUN_ACCESS_KEY_SECRET` - Aliyun Access Key Secret
 - `ALIYUN_SECURITY_GROUP_ID` - Security Group ID
 - `ALIYUN_VSWITCH_ID` - Primary VSwitch ID (fallback use)
-- `ALIYUN_VSWITCH_ID_B` - VSwitch ID for cn-hangzhou-b zone
-- `ALIYUN_VSWITCH_ID_G` - VSwitch ID for cn-hangzhou-g zone  
-- `ALIYUN_VSWITCH_ID_H` - VSwitch ID for cn-hangzhou-h zone
-- `ALIYUN_VSWITCH_ID_I` - VSwitch ID for cn-hangzhou-i zone
-- `ALIYUN_VSWITCH_ID_J` - VSwitch ID for cn-hangzhou-j zone
-- `ALIYUN_VSWITCH_ID_K` - VSwitch ID for cn-hangzhou-k zone
+- `ALIYUN_VPC_ID` - VPC ID for dynamic VSwitch discovery
+- `ALIYUN_VSWITCH_ID_B` - VSwitch ID for cn-hangzhou-b zone (optional)
+- `ALIYUN_VSWITCH_ID_G` - VSwitch ID for cn-hangzhou-g zone (optional)
+- `ALIYUN_VSWITCH_ID_H` - VSwitch ID for cn-hangzhou-h zone (optional)
+- `ALIYUN_VSWITCH_ID_I` - VSwitch ID for cn-hangzhou-i zone (optional)
+- `ALIYUN_VSWITCH_ID_J` - VSwitch ID for cn-hangzhou-j zone (optional)
+- `ALIYUN_VSWITCH_ID_K` - VSwitch ID for cn-hangzhou-k zone (optional)
+
+**VSwitch Selection Strategy:**
+
+1. **Priority**: Use zone-specific VSwitch if configured
+2. **Fallback**: Dynamically query available VSwitches in the zone
+3. **Default**: Use primary VSwitch as last resort
+
 - `ALIYUN_ARM64_IMAGE_ID` - ARM64 Image ID
 - `ALIYUN_AMD64_IMAGE_ID` - AMD64 Image ID
 

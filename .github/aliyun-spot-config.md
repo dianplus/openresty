@@ -427,7 +427,7 @@ Add the following Secrets in repository settings:
 }
 ```
 
-##### VPC Network Isolation Policy
+##### VPC Network Isolation Policy (Recommended for Production)
 
 ```json
 {
@@ -448,12 +448,64 @@ Add the following Secrets in repository settings:
       ],
       "Condition": {
         "StringEquals": {
-          "ecs:VpcId": "vpc-xxxxxxxxx",
-          "ecs:VSwitchId": "vsw-xxxxxxxxx",
           "ecs:RegionId": "cn-hangzhou"
         },
         "StringLike": {
           "ecs:InstanceName": "openresty-*-spot-*"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeImages",
+        "ecs:DescribeSecurityGroups",
+        "ecs:DescribeVSwitches",
+        "ecs:DescribeVpcs",
+        "ecs:DescribeAvailableResource",
+        "ecs:DescribeSpotPriceHistory"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ecs:RegionId": "cn-hangzhou"
+        }
+      }
+    }
+  ]
+}
+```
+
+##### Enhanced VPC Network Isolation Policy (Enterprise Level)
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RunInstances",
+        "ecs:DescribeInstances",
+        "ecs:DeleteInstance"
+      ],
+      "Resource": [
+        "acs:ecs:cn-hangzhou:*:instance/openresty-*-spot-*",
+        "acs:ecs:cn-hangzhou:*:image/m-*",
+        "acs:ecs:cn-hangzhou:*:securitygroup/sg-*",
+        "acs:ecs:cn-hangzhou:*:vswitch/vsw-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ecs:RegionId": "cn-hangzhou"
+        },
+        "StringLike": {
+          "ecs:InstanceName": "openresty-*-spot-*"
+        },
+        "ForAllValues:StringEquals": {
+          "ecs:VpcId": [
+            "vpc-xxxxxxxxx"
+          ]
         }
       }
     },
@@ -519,21 +571,49 @@ Add the following Secrets in repository settings:
 
 #### Permission Policy Comparison
 
-| Policy Type | Security Level | Use Case | Permission Scope | Risk Level |
-|-------------|----------------|----------|------------------|------------|
-| **Minimum Permission Policy** | 🔒 High | Production Environment | Limited to specific resources | 🟢 Low |
-| **Regional Isolation Policy** | 🔒 High | Multi-region Deployment | Limited to region scope | 🟢 Low |
-| **VPC Network Isolation** | 🔒 Highest | Enterprise Level | Complete network isolation | 🟢 Very Low |
-| **Original Policy** | ⚠️ Low | Test Environment | Global permissions | 🔴 High |
+| Policy Type | Security Level | Use Case | Permission Scope | Risk Level | Multi-Zone Support |
+|-------------|----------------|----------|------------------|------------|-------------------|
+| **Minimum Permission Policy** | 🔒 High | Development/Testing | Limited to specific resources | 🟢 Low | ✅ Yes |
+| **Regional Isolation Policy** | 🔒 High | Production Environment | Limited to region scope | 🟢 Low | ✅ Yes |
+| **VPC Network Isolation** | 🔒 Highest | Production Environment | VPC-level isolation | 🟢 Very Low | ✅ Yes |
+| **Enhanced VPC Isolation** | 🔒 Highest | Enterprise Level | Strict VPC restrictions | 🟢 Very Low | ⚠️ Limited* |
+| **Original Policy** | ⚠️ Low | Test Environment | Global permissions | 🔴 High | ✅ Yes |
+
+*Enhanced VPC Isolation requires pre-configured VPC ID in policy
 
 #### Recommended Implementation Order
 
-1. **Development Phase**: Use minimum permission policy
-2. **Testing Phase**: Add regional isolation
-3. **Production Phase**: Implement VPC network isolation
-4. **Enterprise Level**: Combine time restrictions and IP whitelist
+1. **Development Phase**: Use **Minimum Permission Policy** (supports multi-zone)
+2. **Testing Phase**: Use **Regional Isolation Policy** (supports multi-zone)
+3. **Production Phase**: Use **VPC Network Isolation Policy** (supports multi-zone)
+4. **Enterprise Level**: Use **Enhanced VPC Isolation Policy** (requires VPC pre-configuration)
+
+#### Policy Selection Guide
+
+| Environment | Recommended Policy | Multi-Zone Support | Configuration Complexity |
+|-------------|-------------------|-------------------|-------------------------|
+| **Development** | Minimum Permission | ✅ Full Support | 🟢 Simple |
+| **Testing** | Regional Isolation | ✅ Full Support | 🟢 Simple |
+| **Production** | VPC Network Isolation | ✅ Full Support | 🟡 Medium |
+| **Enterprise** | Enhanced VPC Isolation | ⚠️ Limited* | 🔴 Complex |
+
+*Enhanced VPC Isolation requires pre-configuring VPC ID in the policy
 
 ### 5. Security Best Practices
+
+#### Network Configuration Strategy
+
+**Self-hosted runners do not require public IP addresses**:
+
+- **No Public IP Needed**: Self-hosted runners connect to GitHub through private network
+- **Cost Optimization**: Avoid public IP charges (typically ¥0.02-0.05/hour)
+- **Security Enhancement**: Reduce attack surface by eliminating public access
+- **Internal Communication**: Runners communicate with GitHub via VPC gateway
+
+**Network Architecture**:
+```
+GitHub Actions → VPC Gateway → Self-hosted Runner (Private IP)
+```
 
 #### Resource Isolation Strategy
 
@@ -558,13 +638,13 @@ Add the following Secrets in repository settings:
      --VpcId vpc-xxx \
      --Description "CI runners security group"
    
-   # Only allow necessary ports
-   aliyun ecs AuthorizeSecurityGroup \
-     --RegionId cn-hangzhou \
-     --SecurityGroupId sg-xxx \
-     --IpProtocol tcp \
-     --PortRange 22/22 \
-     --SourceCidrIp 0.0.0.0/0
+# Only allow necessary ports (no public IP needed for self-hosted runners)
+aliyun ecs AuthorizeSecurityGroup \
+  --RegionId cn-hangzhou \
+  --SecurityGroupId sg-xxx \
+  --IpProtocol tcp \
+  --PortRange 22/22 \
+  --SourceCidrIp 0.0.0.0/0
    ```
 
 3. **Time Restriction Policy**:
