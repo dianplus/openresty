@@ -244,14 +244,24 @@ jobs:
           sleep 60
 
           # Check if runner registered successfully
+          RUNNER_REGISTERED=false
           for i in {1..10}; do
-            if GH_TOKEN=${{ github.token }} gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ env.INSTANCE_NAME }}") | .status' | grep -q "online"; then
+            if GH_TOKEN=${{ secrets.GITHUB_TOKEN }} gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ env.INSTANCE_NAME }}") | .status' | grep -q "online"; then
               echo "Runner registered successfully!"
+              RUNNER_REGISTERED=true
               break
             fi
             echo "Waiting... ($i/10)"
             sleep 30
           done
+          
+          # Check if runner registration failed
+          if [ "$RUNNER_REGISTERED" = "false" ]; then
+            echo "❌ Runner registration failed after 10 attempts"
+            echo "Available runners:"
+            GH_TOKEN=${{ secrets.GITHUB_TOKEN }} gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | {name: .name, status: .status}'
+            exit 1
+          fi
 
       - name: Trigger Build
         if: github.event.inputs.action == 'create'
