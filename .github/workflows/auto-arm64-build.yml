@@ -141,7 +141,7 @@ jobs:
           RAW_ZONES=$(aliyun ecs DescribeAvailableResource \
             --RegionId ${{ env.ALIYUN_REGION }} \
             --DestinationResource InstanceType \
-            --Output json)
+            --output json)
           
           # Check if the command succeeded
           if [ $? -ne 0 ] || [ -z "$RAW_ZONES" ]; then
