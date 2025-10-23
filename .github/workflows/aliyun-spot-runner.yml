@@ -209,7 +209,7 @@ jobs:
               --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
               --InternetMaxBandwidthOut 5 \
-              --SystemDisk.Category cloud_ssd \
+              --SystemDisk.Category cloud_essd \
               --SystemDisk.Size 40 \
               2>/dev/null)
             
