@@ -140,11 +140,18 @@ jobs:
           RAW_ZONES=$(aliyun ecs DescribeAvailableResource \
             --RegionId ${{ env.ALIYUN_REGION }} \
             --DestinationResource InstanceType \
-            --Output json 2>/dev/null)
-
-          DYNAMIC_ZONES=$(echo "$RAW_ZONES" | jq -r \
-            --arg TYPE "$BEST_TYPE" \
-            '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | any(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
+            --Output json)
+          
+          # Check if the command succeeded
+          if [ $? -ne 0 ] || [ -z "$RAW_ZONES" ]; then
+            echo "Warning: Failed to query available resources, using preset zones"
+            DYNAMIC_ZONES=""
+          else
+            echo "Successfully queried available resources"
+            DYNAMIC_ZONES=$(echo "$RAW_ZONES" | jq -r \
+              --arg TYPE "$BEST_TYPE" \
+              '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | any(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
+          fi
 
           if [ -n "$BEST_ZONE" ]; then
             ZONES="$BEST_ZONE $DYNAMIC_ZONES"
