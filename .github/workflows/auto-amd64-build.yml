@@ -174,14 +174,19 @@ jobs:
               '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | select(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
           fi
 
-          if [ -n "$BEST_ZONE" ]; then
-            ZONES="$BEST_ZONE $DYNAMIC_ZONES"
-          else
+          # Combine recommended zone with dynamically queried zones
+          if [ -n "$BEST_ZONE" ] && [ -n "$DYNAMIC_ZONES" ]; then
+            # Check if recommended zone is in the supported zones
+            if echo "$DYNAMIC_ZONES" | grep -q "$BEST_ZONE"; then
+              ZONES="$BEST_ZONE $DYNAMIC_ZONES"
+            else
+              echo "Warning: Recommended zone $BEST_ZONE not supported for $BEST_TYPE, using dynamic zones only"
+              ZONES="$DYNAMIC_ZONES"
+            fi
+          elif [ -n "$DYNAMIC_ZONES" ]; then
             ZONES="$DYNAMIC_ZONES"
-          fi
-
-          # If no zones found through dynamic query, fallback to preset zones
-          if [ -z "$ZONES" ]; then
+          else
+            echo "Warning: No dynamic zones found, using preset zones"
             ZONES="${{ env.AMD64_ZONES }}"
           fi
           INSTANCE_ID=""
