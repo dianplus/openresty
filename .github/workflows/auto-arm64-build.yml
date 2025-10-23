@@ -140,8 +140,7 @@ jobs:
           echo "Querying zones supporting instance type $BEST_TYPE..."
           RAW_ZONES=$(aliyun ecs DescribeAvailableResource \
             --RegionId ${{ env.ALIYUN_REGION }} \
-            --DestinationResource InstanceType \
-            --output json)
+            --DestinationResource InstanceType)
           
           # Check if the command succeeded
           if [ $? -ne 0 ] || [ -z "$RAW_ZONES" ]; then
@@ -151,7 +150,7 @@ jobs:
             echo "Successfully queried available resources"
             DYNAMIC_ZONES=$(echo "$RAW_ZONES" | jq -r \
               --arg TYPE "$BEST_TYPE" \
-              '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | any(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
+              '.AvailableZones.AvailableZone[] | select(.AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | select(.Value==$TYPE and (.Status=="Available" or .Status=="WithStock"))) | .ZoneId' | sort -u | tr '\n' ' ')
           fi
 
           if [ -n "$BEST_ZONE" ]; then
