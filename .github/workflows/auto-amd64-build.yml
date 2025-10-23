@@ -63,14 +63,30 @@ jobs:
           
           # Select instance with lowest price per core
           CHEAPEST_INSTANCE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .instanceTypeId')
-          CHEAPEST_PRICE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .pricePerCore')
+          CHEAPEST_PRICE_PER_CORE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .pricePerCore')
           CHEAPEST_ZONE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .zoneId')
           
-          # Set spot price limit to 120% of lowest price
-          SPOT_PRICE_LIMIT=$(echo "$CHEAPEST_PRICE * 1.2" | bc -l)
+          # Extract CPU cores from instance type name (e.g., ecs.c8y.4xlarge -> 4 cores)
+          CPU_CORES=$(echo "$CHEAPEST_INSTANCE" | sed -n 's/.*\.\([0-9]*\)xlarge$/\1/p')
+          if [ -z "$CPU_CORES" ]; then
+            # Fallback: try to extract from other patterns
+            CPU_CORES=$(echo "$CHEAPEST_INSTANCE" | sed -n 's/.*\.\([0-9]*\)large$/\1/p')
+            if [ -z "$CPU_CORES" ]; then
+              # Default fallback
+              CPU_CORES=4
+            fi
+          fi
+          
+          # Calculate total price: price per core × CPU cores
+          TOTAL_PRICE=$(echo "$CHEAPEST_PRICE_PER_CORE * $CPU_CORES" | bc -l)
+          
+          # Set spot price limit to 120% of total price
+          SPOT_PRICE_LIMIT=$(echo "$TOTAL_PRICE * 1.2" | bc -l)
           
           echo "Cheapest instance type: $CHEAPEST_INSTANCE"
-          echo "Price per core: $CHEAPEST_PRICE"
+          echo "Price per core: $CHEAPEST_PRICE_PER_CORE"
+          echo "CPU cores: $CPU_CORES"
+          echo "Total price: $TOTAL_PRICE"
           echo "Availability zone: $CHEAPEST_ZONE"
           echo "Spot price limit: $SPOT_PRICE_LIMIT"
           
