@@ -138,7 +138,7 @@ jobs:
           AVAILABLE_TYPES=$(aliyun ecs DescribeAvailableResource \
             --RegionId ${{ env.ALIYUN_REGION }} \
             --DestinationResource InstanceType \
-            --Output json | jq -r ".AvailableZones.AvailableZone[].AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | select(.Value | test(\"$TYPE_PATTERN\")) | .Value" | sort -u)
+            | jq -r ".AvailableZones.AvailableZone[].AvailableResources.AvailableResource[].SupportedResources.SupportedResource[] | select(.Value | test(\"$TYPE_PATTERN\")) | .Value" | sort -u)
           
           if [ -z "$AVAILABLE_TYPES" ]; then
             echo "No available ${{ github.event.inputs.architecture }} instance types found, using default type"
@@ -160,7 +160,7 @@ jobs:
               --InstanceType $TYPE \
               --StartTime $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
               --EndTime $(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              --Output json 2>/dev/null)
+              2>/dev/null)
             
             if [ $? -eq 0 ] && [ -n "$PRICE_INFO" ]; then
               # Get average price
@@ -206,12 +206,12 @@ jobs:
               --SecurityGroupId ${{ secrets.ALIYUN_SECURITY_GROUP_ID }} \
               --VSwitchId ${{ secrets.ALIYUN_VSWITCH_ID }} \
               --UserData $(base64 -w 0 user_data.sh) \
-              --SpotStrategy SpotAsPriceGo \
+              --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
               --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_ssd \
               --SystemDisk.Size 40 \
-              --Output json 2>/dev/null)
+              2>/dev/null)
             
             if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
               INSTANCE_ID=$(echo $RESULT | jq -r '.InstanceIdSets.InstanceIdSet[0]')
@@ -276,7 +276,7 @@ jobs:
           aliyun ecs DescribeInstances \
             --RegionId ${{ env.ALIYUN_REGION }} \
             --InstanceName "${{ github.event.inputs.runner_name }}-*" \
-            --Output table
+            --output table
 
       - name: Destroy Instance
         if: github.event.inputs.action == 'destroy'
@@ -285,7 +285,7 @@ jobs:
           INSTANCE_IDS=$(aliyun ecs DescribeInstances \
             --RegionId ${{ env.ALIYUN_REGION }} \
             --InstanceName "${{ github.event.inputs.runner_name }}-*" \
-            --Output json --query 'Instances.Instance[].InstanceId' | jq -r '.[]')
+            --output json --query 'Instances.Instance[].InstanceId' | jq -r '.[]')
 
           for INSTANCE_ID in $INSTANCE_IDS; do
             echo "Destroying instance: $INSTANCE_ID"

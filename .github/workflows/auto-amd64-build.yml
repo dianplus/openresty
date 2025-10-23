@@ -205,7 +205,7 @@ jobs:
               --SecurityGroupId ${{ secrets.ALIYUN_SECURITY_GROUP_ID }} \
               --VSwitchId ${{ secrets.ALIYUN_VSWITCH_ID }} \
               --UserData $(base64 -w 0 user_data.sh) \
-              --SpotStrategy SpotAsPriceGo \
+              --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
               --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_ssd \

@@ -782,7 +782,7 @@ aliyun bss QueryAccountBalance
    - Check quota limits
    - Verify image and instance type compatibility
    - Insufficient zone resources: Workflow will intelligently select zones (priority advisor recommendation → dynamic query zones supporting the instance type → preset zone fallback)
-   - Spot failure/price fluctuation: Strategy is `SpotAsPriceGo`, price limit = lowest price × 1.2; change specification or retry if necessary
+   - Spot failure/price fluctuation: Strategy is `SpotWithPriceLimit`, price limit = lowest price × 1.2; change specification or retry if necessary
 
 2. **Runner Registration Failed**
    - Check network outbound and DNS
