@@ -197,6 +197,11 @@ jobs:
             echo "Attempting to create ARM64 instance in zone $ZONE..."
             
             # Create ECS instance (using optimal instance type)
+            echo "Creating instance with parameters:"
+            echo "  Zone: $ZONE"
+            echo "  Instance Type: $BEST_TYPE"
+            echo "  Spot Price Limit: $MAX_PRICE"
+            
             RESULT=$(aliyun ecs RunInstances \
               --RegionId ${{ env.ALIYUN_REGION }} \
               --ZoneId $ZONE \
@@ -210,10 +215,10 @@ jobs:
               --SpotPriceLimit $MAX_PRICE \
               --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_ssd \
-              --SystemDisk.Size 40 \
-              --Output json 2>/dev/null)
+              --SystemDisk.Size 40)
             
-            if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 0 ] && [ -n "$RESULT" ]; then
               INSTANCE_ID=$(echo $RESULT | jq -r '.InstanceIdSets.InstanceIdSet[0]')
               if [ "$INSTANCE_ID" != "null" ] && [ -n "$INSTANCE_ID" ]; then
                 SELECTED_ZONE=$ZONE
@@ -222,7 +227,11 @@ jobs:
               fi
             fi
             
-            echo "Failed to create instance in zone $ZONE, trying next zone..."
+            echo "Failed to create instance in zone $ZONE (exit code: $EXIT_CODE)"
+            if [ -n "$RESULT" ]; then
+              echo "Error details: $RESULT"
+            fi
+            echo "Trying next zone..."
             sleep 2
           done
           

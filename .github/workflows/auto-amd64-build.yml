@@ -210,7 +210,7 @@ jobs:
               --InternetMaxBandwidthOut 5 \
               --SystemDisk.Category cloud_ssd \
               --SystemDisk.Size 40 \
-              --Output json 2>/dev/null)
+              2>/dev/null)
             
             if [ $? -eq 0 ] && [ -n "$RESULT" ]; then
               INSTANCE_ID=$(echo $RESULT | jq -r '.InstanceIdSets.InstanceIdSet[0]')
