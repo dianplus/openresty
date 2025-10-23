@@ -269,10 +269,10 @@ aliyun ecs DescribeImages \
   --ImageOwnerAlias system \
   --Output table
 
-# Recommended images (Updated 2024)
-# Alibaba Cloud Linux 3 (Recommended - Optimized for Aliyun)
-# AMD64: aliyun_3_1903_64_20G_alibase_20241216.vhd
-# ARM64: aliyun_3_1903_arm64_20G_alibase_20241216.vhd
+# Recommended images (Updated 2025-10-23)
+# Alibaba Cloud Linux 4 (Recommended - Optimized for Aliyun)
+# AMD64: aliyun_4_x64_20G_alibase_20251011.vhd
+# ARM64: aliyun_4_arm64_20G_alibase_20251011.vhd
 
 # Note: Image IDs may vary by region. Check Aliyun Console for latest versions.
 ```
@@ -282,6 +282,7 @@ aliyun ecs DescribeImages \
 **Recommended Images (2024):**
 
 **Alibaba Cloud Linux 3** (Recommended)
+
 - Optimized for Aliyun infrastructure
 - Better integration with Aliyun services
 - Excellent performance for CI/CD workloads
@@ -292,20 +293,20 @@ aliyun ecs DescribeImages \
 **How to Get Latest Image IDs:**
 
 ```bash
-# List Alibaba Cloud Linux 3 AMD64 images
+# List Alibaba Cloud Linux 4 AMD64 images
 aliyun ecs DescribeImages \
   --RegionId cn-hangzhou \
   --Architecture x86_64 \
   --ImageOwnerAlias system \
-  --ImageName "Alibaba Cloud Linux 3" \
+  --ImageName "Alibaba Cloud Linux 4" \
   --Output table
 
-# List Alibaba Cloud Linux 3 ARM64 images
+# List Alibaba Cloud Linux 4 ARM64 images
 aliyun ecs DescribeImages \
   --RegionId cn-hangzhou \
   --Architecture arm64 \
   --ImageOwnerAlias system \
-  --ImageName "Alibaba Cloud Linux 3" \
+  --ImageName "Alibaba Cloud Linux 4" \
   --Output table
 
 # Alternative: List all Alibaba Cloud Linux images
