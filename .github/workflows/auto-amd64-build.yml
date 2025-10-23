@@ -280,19 +280,19 @@ jobs:
           
           # Check runner status
           RUNNER_REGISTERED=false
-          for i in {1..20}; do
+          for i in {1..5}; do
             if gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ steps.create.outputs.runner_name }}") | .status' | grep -q "online"; then
               echo "✅ Runner registered successfully!"
               RUNNER_REGISTERED=true
               break
             fi
-            echo "⏳ Waiting for runner... ($i/20)"
+            echo "⏳ Waiting for runner... ($i/5)"
             sleep 30
           done
           
           # Check if runner registration failed
           if [ "$RUNNER_REGISTERED" = "false" ]; then
-            echo "❌ Runner registration failed after 20 attempts"
+            echo "❌ Runner registration failed after 5 attempts"
             echo "Available runners:"
             gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | {name: .name, status: .status}'
             exit 1
