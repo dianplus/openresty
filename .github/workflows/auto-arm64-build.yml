@@ -59,7 +59,7 @@ jobs:
             -accessKeySecret="${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}" \
             -region=cn-hangzhou \
             -family="ecs.c8y,ecs.c8r" \
-            -mincpu=8 -maxcpu=64 -minmem=16 -maxmem=128 \
+            -mincpu=8 -maxcpu=8 -minmem=16 -maxmem=16 \
             -resolution=7 -limit=20 --json)
           
           # Select instance with lowest price per core
@@ -67,15 +67,21 @@ jobs:
           CHEAPEST_PRICE_PER_CORE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .pricePerCore')
           CHEAPEST_ZONE=$(echo "$ALL_PRICES" | jq -r 'min_by(.pricePerCore) | .zoneId')
           
-          # Extract CPU cores from instance type name (e.g., ecs.c8y.4xlarge -> 4 cores)
-          CPU_CORES=$(echo "$CHEAPEST_INSTANCE" | sed -n 's/.*\.\([0-9]*\)xlarge$/\1/p')
-          if [ -z "$CPU_CORES" ]; then
-            # Fallback: try to extract from other patterns
-            CPU_CORES=$(echo "$CHEAPEST_INSTANCE" | sed -n 's/.*\.\([0-9]*\)large$/\1/p')
-            if [ -z "$CPU_CORES" ]; then
-              # Default fallback
-              CPU_CORES=4
-            fi
+          # Extract CPU cores from instance type name
+          # ecs.c8y.8xlarge = 32 cores, ecs.c8y.4xlarge = 16 cores, ecs.c8y.2xlarge = 8 cores
+          if [[ "$CHEAPEST_INSTANCE" =~ \.8xlarge$ ]]; then
+            CPU_CORES=32
+          elif [[ "$CHEAPEST_INSTANCE" =~ \.4xlarge$ ]]; then
+            CPU_CORES=16
+          elif [[ "$CHEAPEST_INSTANCE" =~ \.2xlarge$ ]]; then
+            CPU_CORES=8
+          elif [[ "$CHEAPEST_INSTANCE" =~ \.xlarge$ ]]; then
+            CPU_CORES=4
+          elif [[ "$CHEAPEST_INSTANCE" =~ \.large$ ]]; then
+            CPU_CORES=2
+          else
+            # Default fallback
+            CPU_CORES=8
           fi
           
           # Calculate total price: price per core × CPU cores
