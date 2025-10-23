@@ -54,7 +54,7 @@ jobs:
         run: |
           # Query prices for all 8c8g to 64c64g configurations
           echo "Querying all AMD64 instance type prices..."
-          ALL_PRICES=$(./spot-instance-advisor \
+          ALL_PRICES=$(spot-instance-advisor \
             -accessKeyId="${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
             -accessKeySecret="${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}" \
             -region=cn-hangzhou \

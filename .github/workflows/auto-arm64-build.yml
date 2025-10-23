@@ -54,7 +54,7 @@ jobs:
         run: |
           # Query all ARM64 instance type prices (8c16g to 64c128g)
           echo "Querying all ARM64 instance type prices..."
-          ALL_PRICES=$(./spot-instance-advisor \
+          ALL_PRICES=$(spot-instance-advisor \
             -accessKeyId="${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
             -accessKeySecret="${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}" \
             -region=cn-hangzhou \
