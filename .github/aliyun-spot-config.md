@@ -279,9 +279,9 @@ aliyun ecs DescribeImages \
 
 #### Image Selection Guide
 
-**Recommended Images (2024):**
+**Recommended Images (2025):**
 
-**Alibaba Cloud Linux 3** (Recommended)
+**Alibaba Cloud Linux 4** (Recommended)
 
 - Optimized for Aliyun infrastructure
 - Better integration with Aliyun services
@@ -327,8 +327,8 @@ Add the following Secrets in repository settings:
 | `ALIYUN_ACCESS_KEY_SECRET` | Aliyun Access Key Secret | xxx... |
 | `ALIYUN_SECURITY_GROUP_ID` | Security Group ID | sg-xxx |
 | `ALIYUN_VSWITCH_ID` | Primary VSwitch ID (for fallback) | vsw-xxx |
-| `ALIYUN_ARM64_IMAGE_ID` | ARM64 Image ID (Alibaba Cloud Linux 3 recommended) | m-xxx |
-| `ALIYUN_AMD64_IMAGE_ID` | AMD64 Image ID (Alibaba Cloud Linux 3 recommended) | m-xxx |
+| `ALIYUN_ARM64_IMAGE_ID` | ARM64 Image ID (Alibaba Cloud Linux 4 recommended) | m-xxx |
+| `ALIYUN_AMD64_IMAGE_ID` | AMD64 Image ID (Alibaba Cloud Linux 4 recommended) | m-xxx |
 | `ALIYUN_INSTANCE_TYPE` | ARM64 Instance Type | Dynamic Selection* |
 
 **Note**: Since workflows dynamically select availability zones, it's recommended to create VSwitches in multiple zones. `ALIYUN_VSWITCH_ID` is used as fallback, and workflows will prioritize VSwitches corresponding to dynamically queried zones.
