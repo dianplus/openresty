@@ -187,9 +187,9 @@ jobs:
           fi
           
           ARCH=\"arm64\"
-          FILE=\"actions-runner-linux-\${ARCH}-\${RUNNER_VERSION}.tar.gz\"
-          URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
-          echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} \${ARCH}...\"
+          FILE=\"actions-runner-linux-\$ARCH-\$RUNNER_VERSION.tar.gz\"
+          URL=\"https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/\$FILE\"
+          echo \"Downloading GitHub Actions Runner \$RUNNER_VERSION \$ARCH...\"
           echo \"URL: \$URL\"
           echo \"FILE: \$FILE\"
           
