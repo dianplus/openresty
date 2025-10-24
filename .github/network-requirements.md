@@ -113,7 +113,7 @@ if [ -n "$NO_PROXY" ]; then
   export NO_PROXY="$NO_PROXY"
   echo "export NO_PROXY=\"$NO_PROXY\"" >> /etc/environment
 else
-  NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.dianplus.cn,.dianjia.io,.taobao.com"
+  NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.alicdn.com,.dianplus.cn,.dianjia.io,.taobao.com"
   echo "Setting NO_PROXY default: $NO_PROXY_DEFAULT"
   export NO_PROXY="$NO_PROXY_DEFAULT"
   echo "export NO_PROXY=\"$NO_PROXY_DEFAULT\"" >> /etc/environment
@@ -127,7 +127,7 @@ If no `NO_PROXY` environment variable is set, the following default values are u
 - **Local addresses**: `localhost`, `127.0.0.1`, `::1`
 - **Private networks**: `192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`
 - **Chinese mirrors**: `mirrors.tuna.tsinghua.edu.cn`, `mirrors.aliyun.com`
-- **Aliyun services**: `.aliyun.com`, `.aliyuncs.com`
+- **Aliyun services**: `.aliyun.com`, `.aliyuncs.com`, `.alicdn.com`
 - **Company domains**: `.dianplus.cn`, `.dianjia.io`, `.taobao.com`
 
 #### Manual Proxy Configuration

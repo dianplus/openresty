@@ -133,7 +133,7 @@ jobs:
             export NO_PROXY="$NO_PROXY"
             echo "export NO_PROXY=\"$NO_PROXY\"" >> /etc/environment
           else
-            NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.dianplus.cn,.dianjia.io,.taobao.com"
+            NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.alicdn.com,.dianplus.cn,.dianjia.io,.taobao.com"
             echo "Setting NO_PROXY default: $NO_PROXY_DEFAULT"
             export NO_PROXY="$NO_PROXY_DEFAULT"
             echo "export NO_PROXY=\"$NO_PROXY_DEFAULT\"" >> /etc/environment
@@ -154,7 +154,9 @@ jobs:
           # Get latest version
           echo \"Querying latest runner version...\"
           if [ -z \"\$RUNNER_VERSION\" ]; then
-            RUNNER_VERSION=\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')
+            echo \"Fetching latest version from GitHub API...\"
+            API_RESPONSE=\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest)
+            RUNNER_VERSION=\$(echo \"\$API_RESPONSE\" | jq -r .tag_name | sed 's/^v//')
           fi
           echo \"Latest version: \$RUNNER_VERSION\"
           
