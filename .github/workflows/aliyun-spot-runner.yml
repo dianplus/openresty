@@ -131,6 +131,7 @@ jobs:
           
           # Get latest version
           echo \"Querying latest runner version...\"
+          RUNNER_VERSION=\"2.329.0\"  # Default fallback version
           if [ -z \"\$RUNNER_VERSION\" ]; then
             echo \"Fetching latest version from GitHub API...\"
             curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
@@ -140,8 +141,12 @@ jobs:
             yum install -y jq
             TAG_NAME=\`jq -r .tag_name api_response.json\`
             echo \"TAG_NAME: \$TAG_NAME\"
-            RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
-            echo \"RUNNER_VERSION after processing: \$RUNNER_VERSION\"
+            if [ \"\$TAG_NAME\" != \"null\" ] && [ -n \"\$TAG_NAME\" ]; then
+              RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
+              echo \"RUNNER_VERSION after processing: \$RUNNER_VERSION\"
+            else
+              echo \"Failed to get version from API, using default: \$RUNNER_VERSION\"
+            fi
           fi
           echo \"Latest version: \$RUNNER_VERSION\"
           
