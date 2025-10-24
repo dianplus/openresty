@@ -611,6 +611,7 @@ Add the following Secrets in repository settings:
 - **Internal Communication**: Runners communicate with GitHub via VPC gateway
 
 **Network Architecture**:
+
 ```
 GitHub Actions → VPC Gateway → Self-hosted Runner (Private IP)
 ```
@@ -637,14 +638,16 @@ GitHub Actions → VPC Gateway → Self-hosted Runner (Private IP)
      --GroupName openresty-ci-sg \
      --VpcId vpc-xxx \
      --Description "CI runners security group"
-   
-# Only allow necessary ports (no public IP needed for self-hosted runners)
-aliyun ecs AuthorizeSecurityGroup \
-  --RegionId cn-hangzhou \
-  --SecurityGroupId sg-xxx \
-  --IpProtocol tcp \
-  --PortRange 22/22 \
-  --SourceCidrIp 0.0.0.0/0
+
+   # Only allow necessary ports (no public IP needed for self-hosted runners)
+
+   aliyun ecs AuthorizeSecurityGroup \
+     --RegionId cn-hangzhou \
+     --SecurityGroupId sg-xxx \
+     --IpProtocol tcp \
+     --PortRange 22/22 \
+     --SourceCidrIp 0.0.0.0/0
+
    ```
 
 3. **Time Restriction Policy**:
