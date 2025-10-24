@@ -348,10 +348,27 @@ jobs:
             echo "⏳ Checking runner status... ($i/3)"
             
             # Use GitHub API directly instead of gh command
-            RUNNER_STATUS=$(curl -s --max-time 10 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            API_RESPONSE=$(curl -s --max-time 10 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
-              jq -r ".runners[] | select(.name==\"${{ steps.create.outputs.runner_name }}\") | .status")
+              "https://api.github.com/repos/dianplus/openresty/actions/runners")
+            
+            # Check if API response is valid
+            if [ $? -ne 0 ] || [ -z "$API_RESPONSE" ]; then
+              echo "⚠️ API request failed or returned empty response"
+              RUNNER_STATUS="api_error"
+            else
+              # Check if response contains runners array
+              if echo "$API_RESPONSE" | jq -e '.runners' > /dev/null 2>&1; then
+                RUNNER_STATUS=$(echo "$API_RESPONSE" | jq -r ".runners[] | select(.name==\"${{ steps.create.outputs.runner_name }}\") | .status // empty")
+                if [ -z "$RUNNER_STATUS" ]; then
+                  RUNNER_STATUS="not_found"
+                fi
+              else
+                echo "⚠️ Invalid API response format"
+                echo "API Response: $API_RESPONSE"
+                RUNNER_STATUS="invalid_response"
+              fi
+            fi
             
             if [ "$RUNNER_STATUS" = "online" ]; then
               echo "✅ Runner registered successfully!"
@@ -359,8 +376,14 @@ jobs:
               break
             elif [ "$RUNNER_STATUS" = "offline" ]; then
               echo "⚠️ Runner found but offline: $RUNNER_STATUS"
+            elif [ "$RUNNER_STATUS" = "api_error" ]; then
+              echo "⚠️ API request failed, retrying..."
+            elif [ "$RUNNER_STATUS" = "invalid_response" ]; then
+              echo "⚠️ Invalid API response, retrying..."
+            elif [ "$RUNNER_STATUS" = "not_found" ]; then
+              echo "⏳ Runner not found yet, retrying..."
             else
-              echo "⏳ Runner not found yet, status: $RUNNER_STATUS"
+              echo "⏳ Unknown status: $RUNNER_STATUS, retrying..."
             fi
             
             sleep 10
