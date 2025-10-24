@@ -166,9 +166,9 @@ jobs:
           if [ \"$TAG_NAME\" != \"null\" ] && [ -n \"$TAG_NAME\" ]; then
               RUNNER_VERSION=\`echo \"$TAG_NAME\" | sed \"s/^v//\"\"
               echo \"RUNNER_VERSION after processing: $RUNNER_VERSION\"
-            else
+          else
               echo \"Failed to get version from API, using default: $RUNNER_VERSION\"
-            fi
+          fi
           echo \"Latest version: $RUNNER_VERSION\"
           
           # Validate version query
