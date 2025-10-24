@@ -318,15 +318,27 @@ jobs:
           echo "Waiting for runner to register..."
           sleep 120
           
-          # Check runner status
+          # Check runner status using GitHub API directly
           RUNNER_REGISTERED=false
           for i in {1..5}; do
-            if gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | select(.name=="${{ steps.create.outputs.runner_name }}") | .status' | grep -q "online"; then
+            echo "⏳ Checking runner status... ($i/5)"
+            
+            # Use GitHub API directly instead of gh command
+            RUNNER_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
+              jq -r ".runners[] | select(.name==\"${{ steps.create.outputs.runner_name }}\") | .status")
+            
+            if [ "$RUNNER_STATUS" = "online" ]; then
               echo "✅ Runner registered successfully!"
               RUNNER_REGISTERED=true
               break
+            elif [ "$RUNNER_STATUS" = "offline" ]; then
+              echo "⚠️ Runner found but offline: $RUNNER_STATUS"
+            else
+              echo "⏳ Runner not found yet, status: $RUNNER_STATUS"
             fi
-            echo "⏳ Waiting for runner... ($i/5)"
+            
             sleep 30
           done
           
@@ -334,7 +346,10 @@ jobs:
           if [ "$RUNNER_REGISTERED" = "false" ]; then
             echo "❌ Runner registration failed after 5 attempts"
             echo "Available runners:"
-            gh api repos/dianplus/openresty/actions/runners --jq '.runners[] | {name: .name, status: .status}'
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
+              jq '.runners[] | {name: .name, status: .status, busy: .busy}'
             exit 1
           fi
 
