@@ -262,6 +262,7 @@ jobs:
               --SecurityGroupId ${{ secrets.ALIYUN_SECURITY_GROUP_ID }} \
               --VSwitchId $VSWITCH_ID \
               --UserData $(base64 -w 0 user_data.sh) \
+              --KeyPairName ${{ secrets.ALIYUN_KEY_PAIR_NAME }} \
               --SpotStrategy SpotWithPriceLimit \
               --SpotPriceLimit $MAX_PRICE \
               --SystemDisk.Category cloud_essd \

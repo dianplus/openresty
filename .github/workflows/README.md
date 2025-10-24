@@ -92,6 +92,7 @@ Multi-architecture merged available: `ghcr.io/dianplus/openresty:<tag>` (manifes
 - `ALIYUN_ACCESS_KEY_ID` - Aliyun Access Key ID
 - `ALIYUN_ACCESS_KEY_SECRET` - Aliyun Access Key Secret
 - `ALIYUN_SECURITY_GROUP_ID` - Security Group ID
+- `ALIYUN_KEY_PAIR_NAME` - SSH Key Pair Name for root access
 - `ALIYUN_VSWITCH_ID` - Primary VSwitch ID (fallback use)
 - `ALIYUN_VPC_ID` - VPC ID for dynamic VSwitch discovery
 - `ALIYUN_VSWITCH_ID_B` - VSwitch ID for cn-hangzhou-b zone (optional)
