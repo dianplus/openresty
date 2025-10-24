@@ -176,8 +176,13 @@ jobs:
           fi
           
           # Clean version string (remove any whitespace or special characters)
-          RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
-          echo \"Cleaned version: \$RUNNER_VERSION\"
+          if [ -n \"\$RUNNER_VERSION\" ]; then
+            RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
+            echo \"Cleaned version: \$RUNNER_VERSION\"
+          else
+            echo \"❌ RUNNER_VERSION is empty, cannot clean\"
+            exit 1
+          fi
           
           ARCH=\"x64\"
           FILE=\"actions-runner-linux-\${ARCH}-\${RUNNER_VERSION}.tar.gz\"
