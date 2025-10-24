@@ -150,23 +150,88 @@ jobs:
           
           # Download GitHub Actions Runner
           cd /root
+          echo \"=== Starting GitHub Actions Runner Download ===\"
+          
+          # Get latest version
+          echo \"Querying latest runner version...\"
           RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+          echo \"Latest version: \$RUNNER_VERSION\"
+          
+          # Validate version query
+          if [ -z \"\$RUNNER_VERSION\" ] || [ \"\$RUNNER_VERSION\" = \"null\" ]; then
+            echo \"❌ Failed to get runner version from GitHub API\"
+            exit 1
+          fi
+          
           ARCH=\"arm64\"
           FILE=\"actions-runner-linux-\${ARCH}-\${RUNNER_VERSION}.tar.gz\"
           URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
           echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (\${ARCH})...\"
-          curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"
-          tar xzf \"\$FILE\"
+          echo \"URL: \$URL\"
+          
+          # Download with error handling
+          if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then
+            echo \"❌ Failed to download runner from \$URL\"
+            exit 1
+          fi
+          
+          # Verify download
+          if [ ! -f \"\$FILE\" ] || [ ! -s \"\$FILE\" ]; then
+            echo \"❌ Downloaded file is missing or empty\"
+            exit 1
+          fi
+          
+          FILE_SIZE=\$(du -h \$FILE | cut -f1)
+          echo \"✅ Successfully downloaded \$FILE (\$FILE_SIZE)\"
+          
+          # Extract and verify
+          echo \"Extracting runner files...\"
+          if ! tar xzf \"\$FILE\"; then
+            echo \"❌ Failed to extract runner archive\"
+            exit 1
+          fi
+          
+          # Verify essential files exist
+          if [ ! -f \"config.sh\" ] || [ ! -f \"run.sh\" ]; then
+            echo \"❌ Essential runner files missing after extraction\"
+            exit 1
+          fi
+          
+          echo \"✅ Runner files extracted successfully\"
           rm -f \"\$FILE\"
           
           # Configure runner
+          echo \"=== Configuring GitHub Actions Runner ===\"
           echo \"Configuring runner with proxy settings...\"
           echo \"HTTP_PROXY: \$HTTP_PROXY\"
           echo \"HTTPS_PROXY: \$HTTPS_PROXY\"
           echo \"NO_PROXY: \$NO_PROXY\"
           
-          ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$RUNNER_NAME --labels self-hosted,linux,ARM64 --unattended --replace
+          # Configure with error handling
+          if ! ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$RUNNER_NAME --labels self-hosted,linux,ARM64 --unattended --replace; then
+            echo \"❌ Failed to configure runner\"
+            exit 1
+          fi
+          
+          echo \"✅ Runner configured successfully\"
+          
+          # Start runner
+          echo \"=== Starting GitHub Actions Runner ===\"
           nohup ./run.sh > runner.log 2>&1 &
+          RUNNER_PID=\$!
+          echo \"Runner started with PID: \$RUNNER_PID\"
+          
+          # Wait a moment and check if runner is still running
+          sleep 5
+          if ! kill -0 \$RUNNER_PID 2>/dev/null; then
+            echo \"❌ Runner process died immediately\"
+            echo \"Runner log:\"
+            cat runner.log
+            exit 1
+          fi
+          
+          echo \"✅ Runner is running successfully\"
+          echo \"=== GitHub Actions Runner Setup Complete ===\"
           
           # Workflow will handle cleanup automatically after build completion
           EOF
