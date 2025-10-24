@@ -155,8 +155,9 @@ jobs:
           echo \"Querying latest runner version...\"
           if [ -z \"\$RUNNER_VERSION\" ]; then
             echo \"Fetching latest version from GitHub API...\"
-            API_RESPONSE=\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest)
-            RUNNER_VERSION=\$(echo \"\$API_RESPONSE\" | jq -r .tag_name | sed 's/^v//')
+            curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
+            TAG_NAME=\`jq -r .tag_name api_response.json\`
+            RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
           fi
           echo \"Latest version: \$RUNNER_VERSION\"
           
@@ -184,7 +185,8 @@ jobs:
             exit 1
           fi
           
-          FILE_SIZE=\$(du -h \$FILE | cut -f1)
+          du -h \$FILE > file_size.txt
+          FILE_SIZE=\`cut -f1 file_size.txt\`
           echo \"✅ Successfully downloaded \$FILE - \$FILE_SIZE\"
           
           # Extract and verify
