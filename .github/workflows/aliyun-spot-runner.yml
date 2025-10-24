@@ -406,7 +406,7 @@ jobs:
             
             # Use GitHub API directly instead of gh command
             echo "🔍 Querying GitHub API for runner status..."
-            API_RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 -H "Authorization: token ${{ github.token }}" \
+            API_RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
               "https://api.github.com/repos/dianplus/openresty/actions/runners" 2>&1)
             
