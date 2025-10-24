@@ -154,22 +154,22 @@ jobs:
           
           # Get latest version
           echo \"Querying latest runner version...\"
-          if [ -z \"\$RUNNER_VERSION\" ]; then
+          if [ -z \"$RUNNER_VERSION\" ]; then
             echo \"Fetching latest version from GitHub API...\"
-            curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
+            curl -s --proxy \"$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
             echo \"API response saved to api_response.json\"
             echo \"Checking if jq is available...\"
             which jq || echo \"jq not found, installing...\"
             yum install -y jq
             TAG_NAME=\`jq -r .tag_name api_response.json\`
-            echo \"TAG_NAME: \$TAG_NAME\"
-            RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
-            echo \"RUNNER_VERSION after processing: \$RUNNER_VERSION\"
+            echo \"TAG_NAME: $TAG_NAME\"
+            RUNNER_VERSION=\`echo \"$TAG_NAME\" | sed \"s/^v//\"\`
+            echo \"RUNNER_VERSION after processing: $RUNNER_VERSION\"
           fi
-          echo \"Latest version: \$RUNNER_VERSION\"
+          echo \"Latest version: $RUNNER_VERSION\"
           
           # Validate version query
-          if [ -z \"\$RUNNER_VERSION\" ] || [ \"\$RUNNER_VERSION\" = \"null\" ]; then
+          if [ -z \"$RUNNER_VERSION\" ] || [ \"$RUNNER_VERSION\" = \"null\" ]; then
             echo \"❌ Failed to get runner version from GitHub API\"
             echo \"API Response content:\"
             cat api_response.json
@@ -178,20 +178,20 @@ jobs:
           fi
           
           # Clean version string (remove any whitespace or special characters)
-          if [ -n \"\$RUNNER_VERSION\" ]; then
-            RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
-            echo \"Cleaned version: \$RUNNER_VERSION\"
+          if [ -n \"$RUNNER_VERSION\" ]; then
+            RUNNER_VERSION=\`echo \"$RUNNER_VERSION\" | tr -d '[:space:]'\`
+            echo \"Cleaned version: $RUNNER_VERSION\"
           else
             echo \"❌ RUNNER_VERSION is empty, cannot clean\"
             exit 1
           fi
           
           ARCH=\"arm64\"
-          FILE=\"actions-runner-linux-\$ARCH-\$RUNNER_VERSION.tar.gz\"
-          URL=\"https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/\$FILE\"
-          echo \"Downloading GitHub Actions Runner \$RUNNER_VERSION \$ARCH...\"
-          echo \"URL: \$URL\"
-          echo \"FILE: \$FILE\"
+          FILE=\"actions-runner-linux-$ARCH-$RUNNER_VERSION.tar.gz\"
+          URL=\"https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/$FILE\"
+          echo \"Downloading GitHub Actions Runner $RUNNER_VERSION $ARCH...\"
+          echo \"URL: $URL\"
+          echo \"FILE: $FILE\"
           
           # Download with error handling
           if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then

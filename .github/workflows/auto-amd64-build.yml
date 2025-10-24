@@ -153,22 +153,22 @@ jobs:
           
           # Get latest version
           echo \"Querying latest runner version...\"
-          if [ -z \"\$RUNNER_VERSION\" ]; then
+          if [ -z \"$RUNNER_VERSION\" ]; then
             echo \"Fetching latest version from GitHub API...\"
-            curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
+            curl -s --proxy \"$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
             echo \"API response saved to api_response.json\"
             echo \"Checking if jq is available...\"
             which jq || echo \"jq not found, installing...\"
             yum install -y jq
             TAG_NAME=\`jq -r .tag_name api_response.json\`
-            echo \"TAG_NAME: \$TAG_NAME\"
-            RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
-            echo \"RUNNER_VERSION after processing: \$RUNNER_VERSION\"
+            echo \"TAG_NAME: $TAG_NAME\"
+            RUNNER_VERSION=\`echo \"$TAG_NAME\" | sed \"s/^v//\"\`
+            echo \"RUNNER_VERSION after processing: $RUNNER_VERSION\"
           fi
-          echo \"Latest version: \$RUNNER_VERSION\"
+          echo \"Latest version: $RUNNER_VERSION\"
           
           # Validate version query
-          if [ -z \"\$RUNNER_VERSION\" ] || [ \"\$RUNNER_VERSION\" = \"null\" ]; then
+          if [ -z \"$RUNNER_VERSION\" ] || [ \"$RUNNER_VERSION\" = \"null\" ]; then
             echo \"❌ Failed to get runner version from GitHub API\"
             echo \"API Response content:\"
             cat api_response.json
@@ -177,40 +177,40 @@ jobs:
           fi
           
           # Clean version string (remove any whitespace or special characters)
-          if [ -n \"\$RUNNER_VERSION\" ]; then
-            RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
-            echo \"Cleaned version: \$RUNNER_VERSION\"
+          if [ -n \"$RUNNER_VERSION\" ]; then
+            RUNNER_VERSION=\`echo \"$RUNNER_VERSION\" | tr -d '[:space:]'\`
+            echo \"Cleaned version: $RUNNER_VERSION\"
           else
             echo \"❌ RUNNER_VERSION is empty, cannot clean\"
             exit 1
           fi
           
           ARCH=\"x64\"
-          FILE=\"actions-runner-linux-\$ARCH-\$RUNNER_VERSION.tar.gz\"
-          URL=\"https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/\$FILE\"
-          echo \"Downloading GitHub Actions Runner \$RUNNER_VERSION \$ARCH...\"
-          echo \"URL: \$URL\"
-          echo \"FILE: \$FILE\"
+          FILE=\"actions-runner-linux-$ARCH-$RUNNER_VERSION.tar.gz\"
+          URL=\"https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/$FILE\"
+          echo \"Downloading GitHub Actions Runner $RUNNER_VERSION $ARCH...\"
+          echo \"URL: $URL\"
+          echo \"FILE: $FILE\"
           
           # Download with error handling
-          if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then
-            echo \"❌ Failed to download runner from \$URL\"
+          if ! curl -fL --proxy \"$HTTP_PROXY\" -o \"$FILE\" \"$URL\"; then
+            echo \"❌ Failed to download runner from $URL\"
             exit 1
           fi
           
           # Verify download
-          if [ ! -f \"\$FILE\" ] || [ ! -s \"\$FILE\" ]; then
+          if [ ! -f \"$FILE\" ] || [ ! -s \"$FILE\" ]; then
             echo \"❌ Downloaded file is missing or empty\"
             exit 1
           fi
           
-          du -h \$FILE > file_size.txt
+          du -h $FILE > file_size.txt
           FILE_SIZE=\`cut -f1 file_size.txt\`
-          echo \"✅ Successfully downloaded \$FILE - \$FILE_SIZE\"
+          echo \"✅ Successfully downloaded $FILE - $FILE_SIZE\"
           
           # Extract and verify
           echo \"Extracting runner files...\"
-          if ! tar xzf \"\$FILE\"; then
+          if ! tar xzf \"$FILE\"; then
             echo \"❌ Failed to extract runner archive\"
             exit 1
           fi
@@ -222,17 +222,17 @@ jobs:
           fi
           
           echo \"✅ Runner files extracted successfully\"
-          rm -f \"\$FILE\"
+          rm -f \"$FILE\"
           
           # Configure runner
           echo \"=== Configuring GitHub Actions Runner ===\"
           echo \"Configuring runner with proxy settings...\"
-          echo \"HTTP_PROXY: \$HTTP_PROXY\"
-          echo \"HTTPS_PROXY: \$HTTPS_PROXY\"
-          echo \"NO_PROXY: \$NO_PROXY\"
+          echo \"HTTP_PROXY: $HTTP_PROXY\"
+          echo \"HTTPS_PROXY: $HTTPS_PROXY\"
+          echo \"NO_PROXY: $NO_PROXY\"
           
           # Configure with error handling
-          if ! ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$RUNNER_NAME --labels self-hosted,linux,AMD64 --unattended --replace; then
+          if ! ./config.sh --url https://github.com/dianplus/openresty --token $GITHUB_TOKEN --name $RUNNER_NAME --labels self-hosted,linux,AMD64 --unattended --replace; then
             echo \"❌ Failed to configure runner\"
             exit 1
           fi
@@ -242,12 +242,12 @@ jobs:
           # Start runner
           echo \"=== Starting GitHub Actions Runner ===\"
           nohup ./run.sh > runner.log 2>&1 &
-          RUNNER_PID=\$!
-          echo \"Runner started with PID: \$RUNNER_PID\"
+          RUNNER_PID=$!
+          echo \"Runner started with PID: $RUNNER_PID\"
           
           # Wait a moment and check if runner is still running
           sleep 5
-          if ! kill -0 \$RUNNER_PID 2>/dev/null; then
+          if ! kill -0 $RUNNER_PID 2>/dev/null; then
             echo \"❌ Runner process died immediately\"
             echo \"Runner log:\"
             cat runner.log
