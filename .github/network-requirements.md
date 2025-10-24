@@ -17,37 +17,45 @@ Self-hosted runners require specific network connectivity to communicate with Gi
 The runner must be able to access the following domains:
 
 #### Core GitHub Services
+
 - `github.com` - Main GitHub service
 - `api.github.com` - GitHub API
 - `*.actions.githubusercontent.com` - Actions service
 
 #### Actions Downloads
+
 - `codeload.github.com` - Code downloads
 - `pkg.actions.githubusercontent.com` - Package downloads
 
 #### Container Registry
+
 - `ghcr.io` - GitHub Container Registry
 - `*.pkg.github.com` - GitHub Packages
 - `pkg-containers.githubusercontent.com` - Container packages
 
 #### Artifacts and Caching
+
 - `results-receiver.actions.githubusercontent.com` - Results upload
 - `*.blob.core.windows.net` - Azure blob storage for artifacts
 
 #### Runner Updates
+
 - `objects.githubusercontent.com` - Object storage
 - `objects-origin.githubusercontent.com` - Origin objects
 - `github-releases.githubusercontent.com` - Release downloads
 - `github-registry-files.githubusercontent.com` - Registry files
 
 #### OIDC and Security
+
 - `*.actions.githubusercontent.com` - OIDC token retrieval
 
 #### Large Files
+
 - `github-cloud.githubusercontent.com` - Cloud storage
 - `github-cloud.s3.amazonaws.com` - S3 storage
 
 #### Additional Services
+
 - `dependabot-actions.githubapp.com` - Dependabot
 - `release-assets.githubusercontent.com` - Release assets
 - `api.snapcraft.io` - Snapcraft API
@@ -69,6 +77,62 @@ iptables -A OUTPUT -p tcp --dport 443 -d "*.actions.githubusercontent.com" -j AC
 ### Proxy Configuration
 
 If using a corporate proxy, configure the runner with proxy settings:
+
+#### GitHub Environment Variables
+
+Set proxy environment variables in GitHub repository settings:
+
+```bash
+# Repository Settings > Secrets and variables > Actions > Variables
+HTTP_PROXY=http://proxy.company.com:8080
+HTTPS_PROXY=http://proxy.company.com:8080
+NO_PROXY=localhost,127.0.0.1,.local
+```
+
+#### Automatic Proxy Configuration
+
+The runner preparation script automatically configures proxy settings from GitHub environment variables:
+
+```bash
+# Configure proxy from GitHub environment variables
+if [ -n "$HTTP_PROXY" ]; then
+  echo "Setting HTTP_PROXY: $HTTP_PROXY"
+  export HTTP_PROXY="$HTTP_PROXY"
+  echo "export HTTP_PROXY=\"$HTTP_PROXY\"" >> /etc/environment
+fi
+
+if [ -n "$HTTPS_PROXY" ]; then
+  echo "Setting HTTPS_PROXY: $HTTPS_PROXY"
+  export HTTPS_PROXY="$HTTPS_PROXY"
+  echo "export HTTPS_PROXY=\"$HTTPS_PROXY\"" >> /etc/environment
+fi
+
+# Set NO_PROXY with default values if not provided
+if [ -n "$NO_PROXY" ]; then
+  echo "Setting NO_PROXY: $NO_PROXY"
+  export NO_PROXY="$NO_PROXY"
+  echo "export NO_PROXY=\"$NO_PROXY\"" >> /etc/environment
+else
+  NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.dianplus.cn,.dianjia.io,.taobao.com"
+  echo "Setting NO_PROXY default: $NO_PROXY_DEFAULT"
+  export NO_PROXY="$NO_PROXY_DEFAULT"
+  echo "export NO_PROXY=\"$NO_PROXY_DEFAULT\"" >> /etc/environment
+fi
+```
+
+#### NO_PROXY Default Values
+
+If no `NO_PROXY` environment variable is set, the following default values are used:
+
+- **Local addresses**: `localhost`, `127.0.0.1`, `::1`
+- **Private networks**: `192.168.0.0/16`, `10.0.0.0/8`, `172.16.0.0/12`
+- **Chinese mirrors**: `mirrors.tuna.tsinghua.edu.cn`, `mirrors.aliyun.com`
+- **Aliyun services**: `.aliyun.com`, `.aliyuncs.com`
+- **Company domains**: `.dianplus.cn`, `.dianjia.io`, `.taobao.com`
+
+#### Manual Proxy Configuration
+
+For manual configuration on the runner instance:
 
 ```bash
 # Set proxy environment variables
@@ -173,6 +237,7 @@ GitHub Actions → Internet → VPC Gateway → Self-hosted Runner (Private IP)
 ```
 
 This architecture provides:
+
 - Cost savings (no public IP charges)
 - Enhanced security (no direct internet access)
 - Simplified network management

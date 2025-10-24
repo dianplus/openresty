@@ -86,6 +86,33 @@ jobs:
           # Create user data script
           cat > user_data.sh << 'EOF'
           #!/bin/bash
+          set -e
+          
+          # Configure proxy from GitHub environment variables
+          if [ -n "$HTTP_PROXY" ]; then
+            echo "Setting HTTP_PROXY: $HTTP_PROXY"
+            export HTTP_PROXY="$HTTP_PROXY"
+            echo "export HTTP_PROXY=\"$HTTP_PROXY\"" >> /etc/environment
+          fi
+          
+          if [ -n "$HTTPS_PROXY" ]; then
+            echo "Setting HTTPS_PROXY: $HTTPS_PROXY"
+            export HTTPS_PROXY="$HTTPS_PROXY"
+            echo "export HTTPS_PROXY=\"$HTTPS_PROXY\"" >> /etc/environment
+          fi
+          
+          # Set NO_PROXY with default values if not provided
+          if [ -n "$NO_PROXY" ]; then
+            echo "Setting NO_PROXY: $NO_PROXY"
+            export NO_PROXY="$NO_PROXY"
+            echo "export NO_PROXY=\"$NO_PROXY\"" >> /etc/environment
+          else
+            NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.dianplus.cn,.dianjia.io,.taobao.com"
+            echo "Setting NO_PROXY default: $NO_PROXY_DEFAULT"
+            export NO_PROXY="$NO_PROXY_DEFAULT"
+            echo "export NO_PROXY=\"$NO_PROXY_DEFAULT\"" >> /etc/environment
+          fi
+          
           # Install necessary software
           yum update -y
           yum install -y docker git curl wget
