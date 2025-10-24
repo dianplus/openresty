@@ -184,7 +184,7 @@ jobs:
           fi
           
           FILE_SIZE=\$(du -h \$FILE | cut -f1)
-          echo \"✅ Successfully downloaded \$FILE (\$FILE_SIZE)\"
+          echo \"✅ Successfully downloaded \$FILE - \$FILE_SIZE\"
           
           # Extract and verify
           echo \"Extracting runner files...\"
