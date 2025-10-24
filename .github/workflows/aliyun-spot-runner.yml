@@ -164,11 +164,11 @@ jobs:
           fi
           
           if [ \"${{ github.event.inputs.architecture }}\" = \"arm64\" ]; then
-            ARCH=\"arm64\"
-            FILE=\"actions-runner-linux-arm64-\$RUNNER_VERSION.tar.gz\"
-            URL=\"https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/\$FILE\"
-            echo \"Downloading GitHub Actions Runner \$RUNNER_VERSION arm64...\"
-            echo \"URL: \$URL\"
+            ARCH=arm64
+            FILE=actions-runner-linux-arm64-$RUNNER_VERSION.tar.gz
+            URL=https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/$FILE
+            echo \"Downloading GitHub Actions Runner $RUNNER_VERSION arm64...\"
+            echo \"URL: $URL\"
             
             # Download with error handling
             if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then
@@ -210,11 +210,11 @@ jobs:
             fi
             echo \"✅ Runner configured successfully\"
           else
-            ARCH=\"x64\"
-            FILE=\"actions-runner-linux-x64-\$RUNNER_VERSION.tar.gz\"
-            URL=\"https://github.com/actions/runner/releases/download/v\$RUNNER_VERSION/\$FILE\"
-            echo \"Downloading GitHub Actions Runner \$RUNNER_VERSION x64...\"
-            echo \"URL: \$URL\"
+            ARCH=x64
+            FILE=actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
+            URL=https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/$FILE
+            echo \"Downloading GitHub Actions Runner $RUNNER_VERSION x64...\"
+            echo \"URL: $URL\"
             
             # Download with error handling
             if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then
