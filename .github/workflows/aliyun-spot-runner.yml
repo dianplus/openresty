@@ -128,19 +128,19 @@ jobs:
           echo \"NO_PROXY: \$NO_PROXY\"
           
           if [ \"${{ github.event.inputs.architecture }}\" = \"arm64\" ]; then
-            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
             FILE=\"actions-runner-linux-arm64-\${RUNNER_VERSION}.tar.gz\"
             URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
             echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (arm64)...\"
-            curl -fL -o \"\$FILE\" \"\$URL\"
+            curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"
             tar xzf \"\$FILE\"
             ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,ARM64 --unattended
           else
-            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
             FILE=\"actions-runner-linux-x64-\${RUNNER_VERSION}.tar.gz\"
             URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
             echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (x64)...\"
-            curl -fL -o \"\$FILE\" \"\$URL\"
+            curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"
             tar xzf \"\$FILE\"
             ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,X64 --unattended
           fi

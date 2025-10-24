@@ -150,12 +150,12 @@ jobs:
           
           # Download GitHub Actions Runner
           cd /root
-          RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+          RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
           ARCH=\"arm64\"
           FILE=\"actions-runner-linux-\${ARCH}-\${RUNNER_VERSION}.tar.gz\"
           URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
           echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (\${ARCH})...\"
-          curl -fL -o \"\$FILE\" \"\$URL\"
+          curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"
           tar xzf \"\$FILE\"
           rm -f \"\$FILE\"
           
