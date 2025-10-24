@@ -324,17 +324,30 @@ jobs:
             echo "⏳ Checking runner status... ($i/3)"
             
             # Use GitHub API directly instead of gh command
-            API_RESPONSE=$(curl -s --max-time 10 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            echo "🔍 Querying GitHub API for runner status..."
+            API_RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/dianplus/openresty/actions/runners")
+              "https://api.github.com/repos/dianplus/openresty/actions/runners" 2>&1)
             
             # Check if API response is valid
-            if [ $? -ne 0 ] || [ -z "$API_RESPONSE" ]; then
-              echo "⚠️ API request failed or returned empty response"
+            CURL_EXIT_CODE=$?
+            if [ $CURL_EXIT_CODE -ne 0 ] || [ -z "$API_RESPONSE" ]; then
+              echo "⚠️ API request failed (exit code: $CURL_EXIT_CODE) or returned empty response"
               RUNNER_STATUS="api_error"
             else
+              # Check for permission errors first
+              if echo "$API_RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+                ERROR_MESSAGE=$(echo "$API_RESPONSE" | jq -r '.message')
+                if [ "$ERROR_MESSAGE" = "Resource not accessible by integration" ]; then
+                  echo "❌ GitHub token lacks required permissions for actions/runners API"
+                  echo "Required permissions: actions:write, contents:read"
+                  RUNNER_STATUS="permission_denied"
+                else
+                  echo "⚠️ API error: $ERROR_MESSAGE"
+                  RUNNER_STATUS="api_error"
+                fi
               # Check if response contains runners array
-              if echo "$API_RESPONSE" | jq -e '.runners' > /dev/null 2>&1; then
+              elif echo "$API_RESPONSE" | jq -e '.runners' > /dev/null 2>&1; then
                 RUNNER_STATUS=$(echo "$API_RESPONSE" | jq -r ".runners[] | select(.name==\"${{ steps.create.outputs.runner_name }}\") | .status // empty")
                 if [ -z "$RUNNER_STATUS" ]; then
                   RUNNER_STATUS="not_found"
@@ -352,6 +365,10 @@ jobs:
               break
             elif [ "$RUNNER_STATUS" = "offline" ]; then
               echo "⚠️ Runner found but offline: $RUNNER_STATUS"
+            elif [ "$RUNNER_STATUS" = "permission_denied" ]; then
+              echo "❌ Cannot check runner status due to insufficient permissions"
+              echo "Please update workflow permissions or use a token with actions:write access"
+              exit 1
             elif [ "$RUNNER_STATUS" = "api_error" ]; then
               echo "⚠️ API request failed, retrying..."
             elif [ "$RUNNER_STATUS" = "invalid_response" ]; then
