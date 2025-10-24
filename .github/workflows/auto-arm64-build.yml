@@ -344,11 +344,11 @@ jobs:
           
           # Check runner status using GitHub API directly
           RUNNER_REGISTERED=false
-          for i in {1..5}; do
-            echo "⏳ Checking runner status... ($i/5)"
+          for i in {1..3}; do
+            echo "⏳ Checking runner status... ($i/3)"
             
             # Use GitHub API directly instead of gh command
-            RUNNER_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            RUNNER_STATUS=$(curl -s --max-time 10 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
               "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
               jq -r ".runners[] | select(.name==\"${{ steps.create.outputs.runner_name }}\") | .status")
@@ -363,12 +363,12 @@ jobs:
               echo "⏳ Runner not found yet, status: $RUNNER_STATUS"
             fi
             
-            sleep 30
+            sleep 10
           done
           
           # Check if runner registration failed
           if [ "$RUNNER_REGISTERED" = "false" ]; then
-            echo "❌ Runner registration failed after 5 attempts"
+            echo "❌ Runner registration failed after 3 attempts"
             echo "Available runners:"
             curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
