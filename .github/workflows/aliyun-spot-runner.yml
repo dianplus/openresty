@@ -134,8 +134,14 @@ jobs:
           if [ -z \"\$RUNNER_VERSION\" ]; then
             echo \"Fetching latest version from GitHub API...\"
             curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
+            echo \"API response saved to api_response.json\"
+            echo \"Checking if jq is available...\"
+            which jq || echo \"jq not found, installing...\"
+            yum install -y jq
             TAG_NAME=\`jq -r .tag_name api_response.json\`
+            echo \"TAG_NAME: \$TAG_NAME\"
             RUNNER_VERSION=\`echo \"\$TAG_NAME\" | sed \"s/^v//\"\`
+            echo \"RUNNER_VERSION after processing: \$RUNNER_VERSION\"
           fi
           echo \"Latest version: \$RUNNER_VERSION\"
           
