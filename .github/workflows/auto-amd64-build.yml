@@ -153,7 +153,9 @@ jobs:
           
           # Get latest version
           echo \"Querying latest runner version...\"
-          RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+          if [ -z \"\$RUNNER_VERSION\" ]; then
+            RUNNER_VERSION=\$(curl -s --proxy \"\$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')
+          fi
           echo \"Latest version: \$RUNNER_VERSION\"
           
           # Validate version query
