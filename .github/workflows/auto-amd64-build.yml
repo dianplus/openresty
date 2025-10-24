@@ -156,8 +156,8 @@ jobs:
           RUNNER_VERSION=\"2.329.0\"  # Default fallback version
           # Always try to fetch latest version from API
           echo \"Fetching latest version from GitHub API...\"
-            curl -s --proxy \"$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
-            echo \"API response saved to api_response.json\"
+          curl -s --proxy \"$HTTP_PROXY\" https://api.github.com/repos/actions/runner/releases/latest > api_response.json
+          echo \"API response saved to api_response.json\"
             echo \"Checking if jq is available...\"
             which jq || echo \"jq not found, installing...\"
             yum install -y jq
