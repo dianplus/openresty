@@ -165,14 +165,21 @@ jobs:
           # Validate version query
           if [ -z \"\$RUNNER_VERSION\" ] || [ \"\$RUNNER_VERSION\" = \"null\" ]; then
             echo \"❌ Failed to get runner version from GitHub API\"
+            echo \"API Response content:\"
+            cat api_response.json
             exit 1
           fi
+          
+          # Clean version string (remove any whitespace or special characters)
+          RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
+          echo \"Cleaned version: \$RUNNER_VERSION\"
           
           ARCH=\"arm64\"
           FILE=\"actions-runner-linux-\${ARCH}-\${RUNNER_VERSION}.tar.gz\"
           URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
           echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} \${ARCH}...\"
           echo \"URL: \$URL\"
+          echo \"FILE: \$FILE\"
           
           # Download with error handling
           if ! curl -fL --proxy \"\$HTTP_PROXY\" -o \"\$FILE\" \"\$URL\"; then

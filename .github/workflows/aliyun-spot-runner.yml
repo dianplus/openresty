@@ -142,8 +142,14 @@ jobs:
           # Validate version query
           if [ -z \"\$RUNNER_VERSION\" ] || [ \"\$RUNNER_VERSION\" = \"null\" ]; then
             echo \"❌ Failed to get runner version from GitHub API\"
+            echo \"API Response content:\"
+            cat api_response.json
             exit 1
           fi
+          
+          # Clean version string (remove any whitespace or special characters)
+          RUNNER_VERSION=\`echo \"\$RUNNER_VERSION\" | tr -d '[:space:]'\`
+          echo \"Cleaned version: \$RUNNER_VERSION\"
           
           if [ \"${{ github.event.inputs.architecture }}\" = \"arm64\" ]; then
             ARCH=\"arm64\"
