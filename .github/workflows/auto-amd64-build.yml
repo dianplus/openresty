@@ -164,10 +164,10 @@ jobs:
           TAG_NAME=\`jq -r .tag_name api_response.json\`
           echo \"TAG_NAME: $TAG_NAME\"
           if [ \"$TAG_NAME\" != \"null\" ] && [ -n \"$TAG_NAME\" ]; then
-              RUNNER_VERSION=\`echo \"$TAG_NAME\" | sed \"s/^v//\"\"
-              echo \"RUNNER_VERSION after processing: $RUNNER_VERSION\"
+            RUNNER_VERSION=\`echo \"$TAG_NAME\" | sed \"s/^v//\"\"
+            echo \"RUNNER_VERSION after processing: $RUNNER_VERSION\"
           else
-              echo \"Failed to get version from API, using default: $RUNNER_VERSION\"
+            echo \"Failed to get version from API, using default: $RUNNER_VERSION\"
           fi
           echo \"Latest version: $RUNNER_VERSION\"
           
