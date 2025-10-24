@@ -120,42 +120,31 @@ jobs:
           systemctl start docker
           systemctl enable docker
 
-          # Create runner user
-          useradd -m -s /bin/bash runner
-          usermod -aG docker runner
-
           # Download and configure GitHub Actions Runner
-          cd /home/runner
-          sudo -u runner bash -c "
-            # Pass proxy environment variables to runner user
-            export HTTP_PROXY=\"$HTTP_PROXY\"
-            export HTTPS_PROXY=\"$HTTPS_PROXY\"
-            export NO_PROXY=\"$NO_PROXY\"
-            
-            echo \"Configuring runner with proxy settings...\"
-            echo \"HTTP_PROXY: \$HTTP_PROXY\"
-            echo \"HTTPS_PROXY: \$HTTPS_PROXY\"
-            echo \"NO_PROXY: \$NO_PROXY\"
-            
-            if [ \"${{ github.event.inputs.architecture }}\" = \"arm64\" ]; then
-              RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
-              FILE=\"actions-runner-linux-arm64-\${RUNNER_VERSION}.tar.gz\"
-              URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
-              echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (arm64)...\"
-              curl -fL -o \"\$FILE\" \"\$URL\"
-              tar xzf \"\$FILE\"
-              ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,ARM64 --unattended
-            else
-              RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
-              FILE=\"actions-runner-linux-x64-\${RUNNER_VERSION}.tar.gz\"
-              URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
-              echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (x64)...\"
-              curl -fL -o \"\$FILE\" \"\$URL\"
-              tar xzf \"\$FILE\"
-              ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,X64 --unattended
-            fi
-            ./run.sh &
-          "
+          cd /root
+          echo \"Configuring runner with proxy settings...\"
+          echo \"HTTP_PROXY: \$HTTP_PROXY\"
+          echo \"HTTPS_PROXY: \$HTTPS_PROXY\"
+          echo \"NO_PROXY: \$NO_PROXY\"
+          
+          if [ \"${{ github.event.inputs.architecture }}\" = \"arm64\" ]; then
+            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+            FILE=\"actions-runner-linux-arm64-\${RUNNER_VERSION}.tar.gz\"
+            URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
+            echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (arm64)...\"
+            curl -fL -o \"\$FILE\" \"\$URL\"
+            tar xzf \"\$FILE\"
+            ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,ARM64 --unattended
+          else
+            RUNNER_VERSION=\"\${RUNNER_VERSION:-\$(curl -s https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')}\"
+            FILE=\"actions-runner-linux-x64-\${RUNNER_VERSION}.tar.gz\"
+            URL=\"https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/\${FILE}\"
+            echo \"Downloading GitHub Actions Runner \${RUNNER_VERSION} (x64)...\"
+            curl -fL -o \"\$FILE\" \"\$URL\"
+            tar xzf \"\$FILE\"
+            ./config.sh --url https://github.com/dianplus/openresty --token \$GITHUB_TOKEN --name \$INSTANCE_NAME --labels self-hosted,linux,X64 --unattended
+          fi
+          ./run.sh &
 
           # Workflow will automatically clean up instances, no need to set scheduled tasks
           EOF
