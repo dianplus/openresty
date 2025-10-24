@@ -169,7 +169,6 @@ jobs:
             else
               echo \"Failed to get version from API, using default: $RUNNER_VERSION\"
             fi
-          fi
           echo \"Latest version: $RUNNER_VERSION\"
           
           # Validate version query
