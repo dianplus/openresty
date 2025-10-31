@@ -317,10 +317,13 @@ def parse_spot_prices(json_data: Any, instance_type_prefix: str = "ecs.c8y") -> 
             skipped_count += 1
             continue
         
-        # Filter by instance type prefix
+        # Filter by instance type prefix (if provided)
         if instance_type_prefix and not instance_type.startswith(instance_type_prefix):
             skipped_count += 1
             continue
+        
+        # Additional filter: if min/max CPU/memory are specified, we should also filter by actual specs
+        # But spot-instance-advisor already filters by these, so we mainly rely on that
         
         normalized_prices.append({
             "instance_type": instance_type,
@@ -426,18 +429,24 @@ def main():
     
     # Parse prices
     # Extract instance type prefix from instance_types parameter if provided
+    # If instance_types is empty, don't filter by instance type prefix (let tool select)
     instance_type_prefix = ""
     if instance_types:
-        # Get first instance type family (e.g., "ecs.c8y" from "ecs.c8y.8xlarge,ecs.c8y.4xlarge")
-        first_type = instance_types.split(",")[0].strip()
-        # Extract family prefix (e.g., "ecs.c8y" from "ecs.c8y.8xlarge")
-        parts = first_type.split(".")
-        if len(parts) >= 2:
-            instance_type_prefix = ".".join(parts[:2])  # e.g., "ecs.c8y"
+        # Check if it's a family list (e.g., "ecs.c8y,ecs.c8r") or specific types
+        if "," in instance_types and not any("." in part.split(",")[0] for part in instance_types.split(",") if len(part.split(".")) > 2):
+            # It's a family list, use first family as prefix
+            instance_type_prefix = instance_types.split(",")[0].strip()
         else:
-            instance_type_prefix = parts[0] if parts else ""
+            # It's specific instance types, extract family prefix from first type
+            first_type = instance_types.split(",")[0].strip()
+            parts = first_type.split(".")
+            if len(parts) >= 2:
+                instance_type_prefix = ".".join(parts[:2])  # e.g., "ecs.c8y"
+            else:
+                instance_type_prefix = parts[0] if parts else ""
     
-    prices = parse_spot_prices(json_data, instance_type_prefix)
+    # Only filter by instance type prefix if provided, otherwise filter by CPU/memory specs only
+    prices = parse_spot_prices(json_data, instance_type_prefix if instance_type_prefix else None)
     
     if not prices:
         log_error("No suitable instance found")

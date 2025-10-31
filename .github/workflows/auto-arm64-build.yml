@@ -37,8 +37,8 @@ jobs:
         run: |
           python3 .github/scripts/find-cheapest-instance.py \
             "${{ env.ALIYUN_REGION }}" \
-            "ecs.c8y.8xlarge,ecs.c8y.4xlarge,ecs.c8y.2xlarge,ecs.c8y.xlarge,ecs.c8y.large" \
-            "8" "64" "8" "64"
+            "ecs.c8y,ecs.c8r" \
+            "8" "8" "16" "16"
 
   create-spot-runner:
     needs: find-cheapest
@@ -64,7 +64,7 @@ jobs:
             "${{ needs.find-cheapest.outputs.cheapest_instance }}" \
             "${{ needs.find-cheapest.outputs.cheapest_zone }}" \
             "${{ needs.find-cheapest.outputs.spot_price_limit }}" \
-            "${{ secrets.ALIYUN_IMAGE_ID }}" \
+            "${{ secrets.ALIYUN_ARM64_IMAGE_ID }}" \
             "${{ secrets.ALIYUN_SECURITY_GROUP_ID }}" \
             "${{ secrets.ALIYUN_VSWITCH_ID }}" \
             "${{ secrets.ALIYUN_KEY_PAIR_NAME }}" \
