@@ -254,6 +254,9 @@ def parse_spot_prices(json_data: Any, instance_type_prefix: str = "ecs.c8y") -> 
         # Direct array format
         log_info("Detected JSON format: array")
         prices = json_data
+        # Debug: print first item structure if available
+        if prices and isinstance(prices[0], dict):
+            log_info(f"Sample item keys: {list(prices[0].keys())[:10]}")
     elif isinstance(json_data, dict):
         # Object format
         log_info("Detected JSON format: object")
@@ -272,25 +275,63 @@ def parse_spot_prices(json_data: Any, instance_type_prefix: str = "ecs.c8y") -> 
         log_error("No price data found in JSON response")
         return []
     
+    log_info(f"Found {len(prices)} price entries")
+    
     # Normalize and filter prices
     normalized_prices = []
+    skipped_count = 0
+    
     for price in prices:
         if not isinstance(price, dict):
+            skipped_count += 1
             continue
         
-        instance_type = normalize_field(price, "instance_type", "InstanceType", "instanceType")
-        zone = normalize_field(price, "zone", "Zone", "availability_zone", "AvailabilityZone")
-        price_per_core = normalize_field(price, "price_per_core", "PricePerCore", "pricePerCore")
+        # Try multiple field name variations
+        # Common patterns: instanceTypeId, instance_type, InstanceType, etc.
+        instance_type = normalize_field(
+            price,
+            "instanceTypeId", "instance_type", "InstanceType", "instanceType",
+            "Instance", "Type", "instance", "type"
+        )
+        zone = normalize_field(
+            price,
+            "zoneId", "zone", "Zone", "availability_zone", "AvailabilityZone",
+            "az", "AZ", "ZoneId"
+        )
+        price_per_core = normalize_field(
+            price,
+            "pricePerCore", "price_per_core", "PricePerCore", "pricePerCore",
+            "Price", "price", "spot_price", "SpotPrice",
+            "per_core_price"
+        )
         
-        if not instance_type or not price_per_core:
+        # Debug first item if fields not found
+        if not instance_type and normalized_prices == [] and skipped_count == 0:
+            log_info(f"Debug: First item structure: {json.dumps(price, indent=2)[:500]}")
+        
+        if not instance_type:
+            skipped_count += 1
             continue
         
-        if instance_type.startswith(instance_type_prefix):
-            normalized_prices.append({
-                "instance_type": instance_type,
-                "zone": zone or "",
-                "price_per_core": float(price_per_core),
-            })
+        if not price_per_core:
+            skipped_count += 1
+            continue
+        
+        # Filter by instance type prefix
+        if instance_type_prefix and not instance_type.startswith(instance_type_prefix):
+            skipped_count += 1
+            continue
+        
+        normalized_prices.append({
+            "instance_type": instance_type,
+            "zone": zone or "",
+            "price_per_core": float(price_per_core),
+        })
+    
+    if skipped_count > 0:
+        log_info(f"Skipped {skipped_count} entries (missing fields or wrong type)")
+    
+    log_info(f"Filtered to {len(normalized_prices)} matching instances")
     
     return normalized_prices
 
@@ -377,11 +418,32 @@ def main():
         log_error(f"Response: {result.stdout[:1000]}")
         sys.exit(1)
     
+    # Debug: print JSON structure if DEBUG env var is set
+    if os.environ.get("DEBUG"):
+        log_info("JSON response preview:")
+        print(json.dumps(json_data, indent=2)[:1000])
+        print("...")
+    
     # Parse prices
-    prices = parse_spot_prices(json_data, "ecs.c8y")
+    # Extract instance type prefix from instance_types parameter if provided
+    instance_type_prefix = ""
+    if instance_types:
+        # Get first instance type family (e.g., "ecs.c8y" from "ecs.c8y.8xlarge,ecs.c8y.4xlarge")
+        first_type = instance_types.split(",")[0].strip()
+        # Extract family prefix (e.g., "ecs.c8y" from "ecs.c8y.8xlarge")
+        parts = first_type.split(".")
+        if len(parts) >= 2:
+            instance_type_prefix = ".".join(parts[:2])  # e.g., "ecs.c8y"
+        else:
+            instance_type_prefix = parts[0] if parts else ""
+    
+    prices = parse_spot_prices(json_data, instance_type_prefix)
     
     if not prices:
         log_error("No suitable instance found")
+        if os.environ.get("DEBUG"):
+            log_error("Full JSON response:")
+            print(json.dumps(json_data, indent=2))
         sys.exit(1)
     
     # Find cheapest
