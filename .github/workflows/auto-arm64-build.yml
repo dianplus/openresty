@@ -35,8 +35,7 @@ jobs:
           ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         run: |
-          chmod +x .github/scripts/find-cheapest-instance.sh
-          .github/scripts/find-cheapest-instance.sh \
+          python3 .github/scripts/find-cheapest-instance.py \
             "${{ env.ALIYUN_REGION }}" \
             "ecs.c8y.8xlarge,ecs.c8y.4xlarge,ecs.c8y.2xlarge,ecs.c8y.xlarge,ecs.c8y.large" \
             "8" "64" "8" "64"
@@ -61,8 +60,7 @@ jobs:
       - name: Create Spot Instance
         id: create_instance
         run: |
-          chmod +x .github/scripts/create-spot-instance.sh
-          .github/scripts/create-spot-instance.sh \
+          python3 .github/scripts/create-spot-instance.py \
             "${{ needs.find-cheapest.outputs.cheapest_instance }}" \
             "${{ needs.find-cheapest.outputs.cheapest_zone }}" \
             "${{ needs.find-cheapest.outputs.spot_price_limit }}" \
@@ -76,8 +74,7 @@ jobs:
 
       - name: Wait for Instance Ready
         run: |
-          chmod +x .github/scripts/wait-instance-ready.sh
-          .github/scripts/wait-instance-ready.sh \
+          python3 .github/scripts/wait-instance-ready.py \
             "${{ steps.create_instance.outputs.instance_id }}" \
             "600"
 
@@ -105,7 +102,6 @@ jobs:
       - name: Cleanup Spot Instance
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
-          chmod +x .github/scripts/cleanup-instance.sh
-          .github/scripts/cleanup-instance.sh \
+          python3 .github/scripts/cleanup-instance.py \
             "${{ needs.create-spot-runner.outputs.instance_id }}" \
             "true"
