@@ -196,39 +196,54 @@ configure_runner() {
 start_runner() {
     log_info "Starting GitHub Actions Runner..."
     
-    # 启动 runner
-    nohup ./run.sh > runner.log 2>&1 &
+    # 创建日志目录
+    mkdir -p /var/log/github-runner
+    
+    # 启动 runner，同时输出到文件和控制台
+    nohup ./run.sh > /var/log/github-runner/runner.log 2>&1 &
     local runner_pid=$!
-    echo "$runner_pid" > runner.pid
+    echo "$runner_pid" > /var/log/github-runner/runner.pid
     log_info "Runner started with PID: $runner_pid"
+    log_info "Runner logs: /var/log/github-runner/runner.log"
+    log_info "Runner PID file: /var/log/github-runner/runner.pid"
     
     # 等待并检查状态
     sleep 5
     if ! kill -0 "$runner_pid" 2>/dev/null; then
         log_error "Runner process died immediately"
         log_info "Runner log:"
-        cat runner.log
+        cat /var/log/github-runner/runner.log || true
         exit 1
     fi
     
     log_success "Runner is running successfully"
+    log_info "To view runner logs: tail -f /var/log/github-runner/runner.log"
 }
 
 # 主函数
 main() {
+    # 创建日志目录
+    mkdir -p /var/log/github-runner
+    
+    # 日志文件路径
+    LOG_FILE="/var/log/github-runner/setup.log"
+    
     log_info "=== Starting GitHub Actions Runner Setup ==="
+    log_info "Timestamp: $(date)"
+    log_info "Setup log: $LOG_FILE"
+    log_info "All output will be logged to: $LOG_FILE"
     
     # 设置代理
-    setup_proxy
+    setup_proxy 2>&1 | tee -a "$LOG_FILE"
     
     # 安装依赖
-    install_dependencies
+    install_dependencies 2>&1 | tee -a "$LOG_FILE"
     
     # 切换到工作目录
     cd /root
     
     # 获取版本号
-    local runner_version=$(get_runner_version)
+    local runner_version=$(get_runner_version 2>&1 | tee -a "$LOG_FILE" | tail -1)
     log_info "Using runner version: $runner_version"
     
     # 确定架构
@@ -240,7 +255,7 @@ main() {
     log_info "Using architecture: $arch"
     
     # 下载 runner
-    download_runner "$runner_version" "$arch"
+    download_runner "$runner_version" "$arch" 2>&1 | tee -a "$LOG_FILE"
     
     # 配置 runner
     local runner_labels="self-hosted,linux"
@@ -254,12 +269,17 @@ main() {
         "https://github.com/dianplus/openresty" \
         "$GITHUB_TOKEN" \
         "$RUNNER_NAME" \
-        "$runner_labels"
+        "$runner_labels" 2>&1 | tee -a "$LOG_FILE"
     
     # 启动 runner
-    start_runner
+    start_runner 2>&1 | tee -a "$LOG_FILE"
     
     log_success "=== GitHub Actions Runner Setup Completed ==="
+    log_info "Timestamp: $(date)"
+    log_info "Logs location:"
+    log_info "  - Setup log: /var/log/github-runner/setup.log"
+    log_info "  - Runner log: /var/log/github-runner/runner.log"
+    log_info "  - User data log: /var/log/user-data.log"
 }
 
 # 执行主函数

@@ -43,6 +43,9 @@ jobs:
   create-spot-runner:
     needs: find-cheapest
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     outputs:
       instance_id: ${{ steps.create_instance.outputs.instance_id }}
     steps:
@@ -56,6 +59,17 @@ jobs:
             "${{ env.ALIYUN_REGION }}" \
             "${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
             "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+
+      - name: Get Runner Registration Token
+        id: get_token
+        run: |
+          chmod +x .github/scripts/get-runner-registration-token.py
+          REGISTRATION_TOKEN=$(python3 .github/scripts/get-runner-registration-token.py \
+            "${{ secrets.GITHUB_TOKEN }}" \
+            "dianplus" \
+            "openresty")
+          echo "registration_token=$REGISTRATION_TOKEN" >> $GITHUB_OUTPUT
+          echo "✓ Registration token obtained (hidden for security)"
 
       - name: Create Spot Instance
         id: create_instance
@@ -76,7 +90,7 @@ jobs:
             "${{ secrets.ALIYUN_SECURITY_GROUP_ID }}" \
             "${{ secrets.ALIYUN_VSWITCH_ID }}" \
             "${{ secrets.ALIYUN_KEY_PAIR_NAME }}" \
-            "${{ secrets.GITHUB_TOKEN }}" \
+            "${{ steps.get_token.outputs.registration_token }}" \
             "${{ env.RUNNER_NAME }}" \
             "arm64"
 
@@ -85,6 +99,14 @@ jobs:
           python3 .github/scripts/wait-instance-ready.py \
             "${{ steps.create_instance.outputs.instance_id }}" \
             "600"
+
+      - name: Check Runner Status
+        if: steps.create_instance.outputs.instance_id != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/check-runner-status.py \
+            "${{ steps.create_instance.outputs.instance_id }}"
 
   build-arm64:
     needs: create-spot-runner

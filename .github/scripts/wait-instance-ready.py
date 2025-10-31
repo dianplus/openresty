@@ -77,12 +77,47 @@ def get_instance_status(instance_id: str) -> Optional[str]:
         return None
 
 
+def get_instance_details(instance_id: str) -> Optional[dict]:
+    """Get detailed instance information."""
+    cmd = [
+        "aliyun",
+        "ecs",
+        "DescribeInstances",
+        "--InstanceIds", json.dumps([instance_id]),
+    ]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        
+        response_text = result.stdout.strip()
+        if response_text.startswith("{") or response_text.startswith("["):
+            response = json.loads(response_text)
+            instances = response.get("Instances", {}).get("Instance", [])
+            if instances:
+                return instances[0]
+    except Exception:
+        pass
+    
+    return None
+
+
 def wait_for_instance_ready(instance_id: str, max_wait: int = 600, sleep_interval: int = 10) -> bool:
     """Wait for instance to be ready."""
     log_info(f"Waiting for instance {instance_id} to be ready...")
     log_info(f"Maximum wait time: {max_wait}s")
+    log_info("Log files location (once instance is running):")
+    log_info("  - User Data: /var/log/user-data.log")
+    log_info("  - Setup Script: /var/log/github-runner/setup.log")
+    log_info("  - Runner: /var/log/github-runner/runner.log")
+    print()
     
     elapsed = 0
+    instance_details = None
     
     while elapsed < max_wait:
         status = get_instance_status(instance_id)
@@ -94,6 +129,31 @@ def wait_for_instance_ready(instance_id: str, max_wait: int = 600, sleep_interva
             
             if status == "Running":
                 log_success("Instance is running")
+                
+                # Get instance details for log viewing instructions
+                instance_details = get_instance_details(instance_id)
+                if instance_details:
+                    instance_name = instance_details.get("InstanceName", "N/A")
+                    public_ip = instance_details.get("PublicIpAddress", {}).get("IpAddress", [])
+                    
+                    print()
+                    log_info("Runner setup is in progress. To monitor setup:")
+                    log_info("1. Check GitHub Actions runner registration:")
+                    log_info(f"   Runner name pattern: {instance_name}")
+                    
+                    if public_ip:
+                        ip = public_ip[0] if isinstance(public_ip, list) else public_ip
+                        log_info("2. SSH to instance (if accessible):")
+                        log_info(f"   ssh root@{ip}")
+                        log_info("   tail -f /var/log/user-data.log")
+                        log_info("   tail -f /var/log/github-runner/setup.log")
+                    else:
+                        log_info("2. Use Aliyun Console Cloud Assistant to view logs")
+                        log_info("   Or configure VPC connection for SSH access")
+                    
+                    log_info("3. Use check-runner-status.py script:")
+                    log_info(f"   python3 .github/scripts/check-runner-status.py {instance_id}")
+                
                 return True
             elif status in ("Stopped", "Stopping"):
                 log_error(f"Instance failed to start (status: {status})")
@@ -103,6 +163,8 @@ def wait_for_instance_ready(instance_id: str, max_wait: int = 600, sleep_interva
         elapsed += sleep_interval
     
     log_error(f"Timeout waiting for instance to be ready (waited {max_wait}s)")
+    if instance_details:
+        log_info("Instance may still be starting. Check logs for details.")
     return False
 
 

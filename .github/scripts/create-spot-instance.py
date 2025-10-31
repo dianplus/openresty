@@ -29,16 +29,35 @@ def log_error(msg: str) -> None:
     print(f"❌ {msg}")
 
 
-def generate_user_data(github_token: str, runner_name: str, architecture: str) -> str:
-    """Generate user data script for ECS instance."""
+def generate_user_data(registration_token: str, runner_name: str, architecture: str) -> str:
+    """Generate user data script for ECS instance.
+    
+    Args:
+        registration_token: GitHub Actions runner registration token (temporary, ~1 hour)
+        runner_name: Name prefix for the runner
+        architecture: Architecture (x64 or arm64)
+    """
     # Architecture label mapping
     arch_label = "ARM64" if architecture == "arm64" else "X64"
     
     user_data_template = f"""#!/bin/bash
 set -e
 
+# Cloud-init executes this script as User Data
+# Log all output to files for debugging
+# Note: cloud-init also logs to /var/log/cloud-init-output.log and /var/log/cloud-init.log
+exec > >(tee -a /var/log/user-data.log) 2>&1
+
+echo "=== User Data Script Started (via cloud-init) ==="
+echo "Timestamp: $(date)"
+echo "Architecture: {architecture}"
+echo "Runner Name: {runner_name}"
+echo "Cloud-init logs: /var/log/cloud-init.log and /var/log/cloud-init-output.log"
+
 # Export environment variables needed by setup-runner.sh
-export GITHUB_TOKEN="{github_token}"
+# Note: This is a registration token (temporary, ~1 hour), not GITHUB_TOKEN
+# The registration token is used by config.sh to register the runner
+export GITHUB_TOKEN="{registration_token}"
 export RUNNER_NAME="{runner_name}-$(date +%s)"
 
 # Set proxy variables if available (from ECS instance metadata or defaults)
@@ -47,6 +66,7 @@ export RUNNER_NAME="{runner_name}-$(date +%s)"
 [ -n "${{HTTPS_PROXY:-}}" ] && export HTTPS_PROXY="${{HTTPS_PROXY}}"
 [ -n "${{NO_PROXY:-}}" ] && export NO_PROXY="${{NO_PROXY}}"
 
+echo "=== Downloading setup-runner.sh ==="
 # Download and execute the setup script
 # Use HTTP_PROXY if set, otherwise proceed without proxy
 if [ -n "${{HTTP_PROXY:-}}" ]; then
@@ -55,10 +75,27 @@ else
   curl -s https://raw.githubusercontent.com/dianplus/openresty/master/.github/scripts/setup-runner.sh -o setup-runner.sh
 fi
 
-chmod +x setup-runner.sh
+if [ ! -f setup-runner.sh ]; then
+  echo "ERROR: Failed to download setup-runner.sh"
+  exit 1
+fi
 
-# Execute the setup script
-./setup-runner.sh {architecture}
+chmod +x setup-runner.sh
+echo "=== Executing setup-runner.sh ==="
+
+# Execute the setup script with logging
+./setup-runner.sh {architecture} 2>&1 | tee -a /var/log/setup-runner.log
+
+EXIT_CODE=$?
+echo "=== Setup script completed with exit code: $EXIT_CODE ==="
+echo "Timestamp: $(date)"
+
+if [ $EXIT_CODE -ne 0 ]; then
+  echo "ERROR: Setup script failed"
+  exit $EXIT_CODE
+fi
+
+echo "=== User Data Script Completed Successfully ==="
 """
     return user_data_template
 
