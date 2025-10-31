@@ -7,15 +7,18 @@
 **用途**: 用于将 self-hosted runner 注册到 GitHub 仓库或组织
 
 **特点**:
+
 - **临时性**: 通常有效期约 1 小时
 - **一次性**: 每次注册 runner 时都需要新的 token
 - **安全性**: 不能用于其他 GitHub API 操作
 
 **获取方式**:
+
 - 通过 GitHub API: `POST /repos/{owner}/{repo}/actions/runners/registration-token`
 - 需要具有 `repo` 或 `admin:repo` 权限的 token
 
 **在代码中的使用**:
+
 ```python
 # Workflow 中动态获取
 REGISTRATION_TOKEN=$(python3 .github/scripts/get-runner-registration-token.py \
@@ -32,16 +35,19 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
 **用途**: GitHub Actions 工作流运行时的自动生成 token
 
 **特点**:
+
 - **自动生成**: 每次工作流运行时 GitHub 自动创建
 - **临时性**: 仅在当前工作流运行期间有效
 - **权限**: 默认具有 `actions:write` 和 `contents:read` 权限
 
 **使用场景**:
+
 - 获取 registration token（需要 `actions:write` 权限）
 - 调用 GitHub API 查询 runner 状态 id
 - 工作流内的其他 GitHub API 操作
 
 **限制**:
+
 - **不能直接用于 runner 注册**: `config.sh` 不接受普通的 `GITHUB_TOKEN`
 - **需要 registration token**: 必须通过 API 获取 registration token
 
@@ -50,6 +56,7 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
 ### Workflow 执行流程
 
 1. **获取 Registration Token**
+
    ```yaml
    - name: Get Runner Registration Token
      id: get_token
@@ -62,6 +69,7 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
    ```
 
 2. **创建 ECS 实例并传递 Token**
+
    ```yaml
    - name: Create Spot Instance
      run: |
@@ -72,6 +80,7 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
    ```
 
 3. **User Data 脚本接收并设置**
+
    ```bash
    # User Data 脚本中
    export GITHUB_TOKEN="{registration_token}"  # 实际是 registration token
@@ -79,6 +88,7 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
    ```
 
 4. **setup-runner.sh 使用 Token 注册**
+
    ```bash
    # setup-runner.sh 中
    ./config.sh --url "$github_url" \
@@ -151,6 +161,7 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
 **原因**: `GITHUB_TOKEN` 没有 `actions:write` 权限
 
 **解决**:
+
 1. 确保 workflow 有 `permissions: actions:write`
 2. 或者使用具有 `repo` 权限的 Personal Access Token (PAT)
 
@@ -159,11 +170,13 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
 **错误**: `Failed to configure runner`
 
 **可能原因**:
+
 1. Registration token 已过期（超过 1 小时）
 2. Token 格式不正确
 3. 网络连接问题
 
 **排查步骤**:
+
 1. 检查 `/var/log/github-runner/setup.log` 查看详细错误
 2. 确认 token 是否在有效期内
 3. 检查网络连接和代理设置
@@ -175,4 +188,3 @@ export GITHUB_TOKEN="{registration_token}"  # 注意：这里命名为 GITHUB_TO
 - `.github/scripts/setup-runner.sh` - Runner 设置脚本
 - `.github/workflows/auto-amd64-build.yml` - AMD64 构建工作流
 - `.github/workflows/auto-arm64-build.yml` - ARM64 构建工作流
-
