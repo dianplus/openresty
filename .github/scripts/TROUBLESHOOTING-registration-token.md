@@ -50,7 +50,7 @@ permissions:
 
 1. 进入仓库 Settings > Secrets and variables > Actions
 2. 点击 "New repository secret"
-3. 名称: `GITHUB_PAT` (或任何你喜欢的名称)
+3. 名称: `RUNNER_REGISTRATION_PAT` (注意：不能以 `GITHUB_` 开头)
 4. 值: 粘贴刚才复制的 PAT
 5. 保存
 
@@ -65,7 +65,8 @@ permissions:
     chmod +x .github/scripts/get-runner-registration-token.py
     echo "Fetching registration token..."
     # Use PAT if available, otherwise fallback to GITHUB_TOKEN
-    TOKEN_TO_USE="${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}"
+    # Note: Secret names cannot start with GITHUB_
+    TOKEN_TO_USE="${{ secrets.RUNNER_REGISTRATION_PAT || secrets.GITHUB_TOKEN }}"
     set +e
     REGISTRATION_TOKEN=$(python3 .github/scripts/get-runner-registration-token.py \
       "$TOKEN_TO_USE" \
@@ -107,9 +108,9 @@ permissions:
 ```
 
 如果仍然失败，检查：
-1. PAT 是否正确添加到 Secrets
+1. PAT 是否正确添加到 Secrets（名称不能以 `GITHUB_` 开头）
 2. PAT 是否过期
-3. PAT 是否有正确的权限范围
+3. PAT 是否有正确的权限范围（需要 `repo` 权限）
 
 ## 相关文档
 

@@ -69,10 +69,18 @@ jobs:
         run: |
           chmod +x .github/scripts/get-runner-registration-token.py
           echo "Fetching registration token..."
+          # Use PAT if available (for cases where GITHUB_TOKEN lacks permissions)
+          # Note: Secret names cannot start with GITHUB_
+          TOKEN_TO_USE="${{ secrets.RUNNER_REGISTRATION_PAT || secrets.GITHUB_TOKEN }}"
+          if [ -n "${{ secrets.RUNNER_REGISTRATION_PAT }}" ]; then
+            echo "Using Personal Access Token from secrets"
+          else
+            echo "Using GITHUB_TOKEN"
+          fi
           # Run script - stderr will show logs, stdout will have token if successful
           set +e
           REGISTRATION_TOKEN=$(python3 .github/scripts/get-runner-registration-token.py \
-            "${{ secrets.GITHUB_TOKEN }}" \
+            "$TOKEN_TO_USE" \
             "dianplus" \
             "openresty" 2>&1)
           EXIT_CODE=$?
