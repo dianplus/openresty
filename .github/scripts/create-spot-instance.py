@@ -156,12 +156,17 @@ def get_vswitch_id_for_zone(zone: str) -> Optional[str]:
     """Get VSwitch ID for the given zone.
     
     Zone format: cn-hangzhou-{zone_suffix} (e.g., cn-hangzhou-j)
-    Tries ALIYUN_VSWITCH_ID_{ZONE_SUFFIX} first, falls back to ALIYUN_VSWITCH_ID
+    Must use ALIYUN_VSWITCH_ID_{ZONE_SUFFIX} - no fallback to avoid creating
+    instances in wrong VSwitch which may cause network/price issues.
     """
     # Extract zone suffix (e.g., 'j' from 'cn-hangzhou-j')
     zone_suffix = zone.split("-")[-1].upper() if "-" in zone else ""
     
-    # Try zone-specific vswitch ID first
+    if not zone_suffix:
+        log_error(f"Invalid zone format: {zone}. Expected format: cn-hangzhou-{{suffix}}")
+        return None
+    
+    # Get zone-specific vswitch ID (required, no fallback)
     zone_vswitch_key = f"ALIYUN_VSWITCH_ID_{zone_suffix}"
     zone_vswitch_id = os.environ.get(zone_vswitch_key)
     
@@ -169,19 +174,17 @@ def get_vswitch_id_for_zone(zone: str) -> Optional[str]:
         log_info(f"Using zone-specific VSwitch ID from {zone_vswitch_key}")
         return zone_vswitch_id
     
-    # Fallback to default VSwitch ID
-    fallback_vswitch_id = os.environ.get("ALIYUN_VSWITCH_ID")
-    if fallback_vswitch_id:
-        log_info(f"Using fallback VSwitch ID (ALIYUN_VSWITCH_ID)")
-        return fallback_vswitch_id
-    
+    log_error(f"VSwitch ID not found for zone {zone} (expected {zone_vswitch_key})")
+    log_error("Zone-specific VSwitch ID is required to ensure instance is created in correct network")
+    log_error("Please configure the corresponding secret in GitHub repository settings")
     return None
 
 
 def main():
     """Main function."""
     if len(sys.argv) < 11:
-        log_error(f"Usage: {sys.argv[0]} <instance-type> <zone> <spot-price-limit> <image-id> <security-group-id> <vswitch-id-fallback> <key-pair-name> <github-token> <runner-name> <architecture>")
+        log_error(f"Usage: {sys.argv[0]} <instance-type> <zone> <spot-price-limit> <image-id> <security-group-id> <unused-vswitch-param> <key-pair-name> <github-token> <runner-name> <architecture>")
+        log_error("Note: VSwitch ID is now auto-selected based on zone. The vswitch parameter is kept for compatibility but not used.")
         sys.exit(1)
     
     instance_type = sys.argv[1]
@@ -189,7 +192,7 @@ def main():
     spot_price_limit = sys.argv[3]
     image_id = sys.argv[4]
     security_group_id = sys.argv[5]
-    vswitch_id_fallback = sys.argv[6]  # Fallback vswitch ID (can be empty if using zone-specific)
+    # vswitch_id parameter kept for compatibility but not used - we auto-select based on zone
     key_pair_name = sys.argv[7]
     github_token = sys.argv[8]
     runner_name = sys.argv[9]
@@ -201,16 +204,12 @@ def main():
     log_info(f"Spot price limit: {spot_price_limit}")
     log_info(f"Architecture: {architecture}")
     
-    # Get VSwitch ID based on zone
+    # Get VSwitch ID based on zone (must be zone-specific, no fallback)
     vswitch_id = get_vswitch_id_for_zone(zone)
     if not vswitch_id:
-        # Use fallback if provided
-        if vswitch_id_fallback:
-            vswitch_id = vswitch_id_fallback
-            log_info("Using fallback VSwitch ID from parameter")
-        else:
-            log_error(f"VSwitch ID not found for zone {zone} and no fallback provided")
-            sys.exit(1)
+        log_error(f"Cannot create instance in zone {zone} without zone-specific VSwitch ID")
+        log_error("This ensures instances are created in the correct network for their availability zone")
+        sys.exit(1)
     
     log_info(f"Selected VSwitch ID: {vswitch_id[:20]}...")
     
