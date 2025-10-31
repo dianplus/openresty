@@ -144,6 +144,41 @@ jobs:
         run: |
           python3 .github/scripts/check-runner-status.py \
             "${{ steps.create_instance.outputs.instance_id }}"
+          
+      - name: Wait for Runner Registration
+        if: steps.create_instance.outputs.instance_id != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Waiting for runner to register and become available..."
+          INSTANCE_NAME="${{ env.RUNNER_NAME }}-$(date +%s)"
+          MAX_WAIT=300
+          SLEEP_INTERVAL=10
+          ELAPSED=0
+          
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            RUNNER_STATUS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
+              jq -r ".runners[] | select(.name | startswith(\"${{ env.RUNNER_NAME }}\")) | .status" | head -1)
+            
+            if [ "$RUNNER_STATUS" = "online" ]; then
+              echo "✅ Runner is online and ready"
+              break
+            elif [ "$RUNNER_STATUS" = "offline" ]; then
+              echo "⏳ Runner is registered but offline (elapsed: ${ELAPSED}s)"
+            else
+              echo "⏳ Waiting for runner registration... (elapsed: ${ELAPSED}s)"
+            fi
+            
+            sleep $SLEEP_INTERVAL
+            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
+          done
+          
+          if [ "$RUNNER_STATUS" != "online" ]; then
+            echo "⚠️ Runner may not be ready yet, but proceeding with build job"
+            echo "Build job will wait for runner to become available"
+          fi
 
   build-amd64:
     needs: create-spot-runner
@@ -157,7 +192,15 @@ jobs:
           docker build -t openresty:latest .
           docker tag openresty:latest openresty:amd64-$(date +%Y%m%d-%H%M%S)
 
-      - name: Configure Aliyun CLI for Cleanup
+  cleanup:
+    needs: [create-spot-runner, build-amd64]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
           chmod +x .github/scripts/configure-aliyun-cli.sh
@@ -169,6 +212,8 @@ jobs:
       - name: Cleanup Spot Instance
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
+          echo "Cleaning up instance: ${{ needs.create-spot-runner.outputs.instance_id }}"
           python3 .github/scripts/cleanup-instance.py \
             "${{ needs.create-spot-runner.outputs.instance_id }}" \
             "true"
+          echo "✅ Instance cleaned up successfully"

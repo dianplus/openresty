@@ -157,7 +157,15 @@ jobs:
           docker build -t openresty:latest .
           docker tag openresty:latest openresty:arm64-$(date +%Y%m%d-%H%M%S)
 
-      - name: Configure Aliyun CLI for Cleanup
+  cleanup:
+    needs: [create-spot-runner, build-arm64]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
           chmod +x .github/scripts/configure-aliyun-cli.sh
@@ -169,6 +177,8 @@ jobs:
       - name: Cleanup Spot Instance
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
+          echo "Cleaning up instance: ${{ needs.create-spot-runner.outputs.instance_id }}"
           python3 .github/scripts/cleanup-instance.py \
             "${{ needs.create-spot-runner.outputs.instance_id }}" \
             "true"
+          echo "✅ Instance cleaned up successfully"
