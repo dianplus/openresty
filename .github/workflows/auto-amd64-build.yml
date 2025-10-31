@@ -157,18 +157,30 @@ jobs:
           ELAPSED=0
           
           while [ $ELAPSED -lt $MAX_WAIT ]; do
-            RUNNER_STATUS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            API_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/dianplus/openresty/actions/runners" | \
-              jq -r ".runners[] | select(.name | startswith(\"${{ env.RUNNER_NAME }}\")) | .status" | head -1)
+              "https://api.github.com/repos/dianplus/openresty/actions/runners")
             
-            if [ "$RUNNER_STATUS" = "online" ]; then
-              echo "✅ Runner is online and ready"
-              break
-            elif [ "$RUNNER_STATUS" = "offline" ]; then
-              echo "⏳ Runner is registered but offline (elapsed: ${ELAPSED}s)"
+            # Check if API response is valid and has runners array
+            if echo "$API_RESPONSE" | jq -e '.runners' > /dev/null 2>&1; then
+              RUNNER_STATUS=$(echo "$API_RESPONSE" | \
+                jq -r --arg prefix "${{ env.RUNNER_NAME }}" \
+                '.runners[]? | select(.name | startswith($prefix)) | .status' | head -1)
+              
+              if [ -n "$RUNNER_STATUS" ] && [ "$RUNNER_STATUS" != "null" ]; then
+                if [ "$RUNNER_STATUS" = "online" ]; then
+                  echo "✅ Runner is online and ready"
+                  break
+                elif [ "$RUNNER_STATUS" = "offline" ]; then
+                  echo "⏳ Runner is registered but offline (elapsed: ${ELAPSED}s)"
+                else
+                  echo "⏳ Runner status: $RUNNER_STATUS (elapsed: ${ELAPSED}s)"
+                fi
+              else
+                echo "⏳ Waiting for runner registration... (elapsed: ${ELAPSED}s)"
+              fi
             else
-              echo "⏳ Waiting for runner registration... (elapsed: ${ELAPSED}s)"
+              echo "⏳ Waiting for runner registration... (API response may be empty, elapsed: ${ELAPSED}s)"
             fi
             
             sleep $SLEEP_INTERVAL
@@ -195,7 +207,8 @@ jobs:
   cleanup:
     needs: [create-spot-runner, build-amd64]
     runs-on: ubuntu-latest
-    if: always()
+    # Only cleanup if build job completed (success or failure), not if it was skipped
+    if: always() && (needs.build-amd64.result == 'success' || needs.build-amd64.result == 'failure')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -213,6 +226,7 @@ jobs:
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
           echo "Cleaning up instance: ${{ needs.create-spot-runner.outputs.instance_id }}"
+          echo "Build job result: ${{ needs.build-amd64.result }}"
           python3 .github/scripts/cleanup-instance.py \
             "${{ needs.create-spot-runner.outputs.instance_id }}" \
             "true"
