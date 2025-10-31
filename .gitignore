@@ -1,4 +1,4 @@
 /.project
 !/.idea/
 .env
-.env-local
+.env-local__pycache__/
