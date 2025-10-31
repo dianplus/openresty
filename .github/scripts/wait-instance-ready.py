@@ -41,7 +41,6 @@ def get_instance_status(instance_id: str) -> Optional[str]:
         "ecs",
         "DescribeInstances",
         "--InstanceIds", json.dumps([instance_id]),
-        "--Output", "json",
     ]
     
     try:
@@ -52,13 +51,22 @@ def get_instance_status(instance_id: str) -> Optional[str]:
             check=True,
         )
         
-        response = json.loads(result.stdout)
-        instances = response.get("Instances", {}).get("Instance", [])
+        # Parse response (might be JSON or table format)
+        response_text = result.stdout.strip()
         
-        if instances:
-            return instances[0].get("Status")
-        else:
-            return None
+        # Try parsing as JSON
+        if response_text.startswith("{") or response_text.startswith("["):
+            try:
+                response = json.loads(response_text)
+                instances = response.get("Instances", {}).get("Instance", [])
+                if instances:
+                    return instances[0].get("Status")
+            except json.JSONDecodeError:
+                pass
+        
+        # If not JSON, try to extract status using regex or other methods
+        # For now, return None if not JSON format
+        return None
             
     except subprocess.CalledProcessError as e:
         log_error(f"Failed to query instance status: {e}")
