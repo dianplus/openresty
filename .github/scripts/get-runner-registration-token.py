@@ -17,13 +17,13 @@ from typing import Optional
 
 
 def log_info(msg: str) -> None:
-    """Print info message."""
-    print(f"ℹ️  {msg}")
+    """Print info message to stderr."""
+    print(f"ℹ️  {msg}", file=sys.stderr)
 
 
 def log_error(msg: str) -> None:
-    """Print error message."""
-    print(f"❌ {msg}")
+    """Print error message to stderr."""
+    print(f"❌ {msg}", file=sys.stderr)
 
 
 def get_registration_token(github_token: str, owner: str, repo: str) -> Optional[str]:
@@ -46,17 +46,30 @@ def get_registration_token(github_token: str, owner: str, repo: str) -> Optional
                 log_error("Registration token not found in API response")
                 return None
     except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read().decode()
+        except:
+            pass
+        
         if e.code == 403:
             log_error("Permission denied: GitHub token lacks required permissions")
-            log_error("Required permissions: repo scope or admin:repo scope")
-            log_error(f"API response: {e.read().decode()}")
+            log_error("Required permissions: actions:write (for GITHUB_TOKEN) or repo scope")
+            if error_body:
+                log_error(f"API response: {error_body}")
         elif e.code == 404:
             log_error(f"Repository not found: {owner}/{repo}")
+            if error_body:
+                log_error(f"API response: {error_body}")
         else:
             log_error(f"HTTP error {e.code}: {e.reason}")
+            if error_body:
+                log_error(f"API response: {error_body}")
         return None
     except Exception as e:
         log_error(f"Failed to get registration token: {e}")
+        import traceback
+        log_error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
@@ -76,10 +89,15 @@ def main():
     token = get_registration_token(github_token, owner, repo)
     
     if token:
-        print(token)
+        # Output token to stdout only (for capturing in shell variable)
+        print(token, file=sys.stdout)
         sys.exit(0)
     else:
         log_error("Failed to get registration token")
+        log_error("Please check:")
+        log_error("1. GitHub token has 'actions:write' permission")
+        log_error("2. Repository name and owner are correct")
+        log_error("3. Network connectivity to api.github.com")
         sys.exit(1)
 
 
