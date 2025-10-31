@@ -1,0 +1,108 @@
+name: Auto ARM64 Build
+
+on:
+  push:
+    branches: [ master, develop ]
+  workflow_dispatch:
+
+env:
+  ALIYUN_REGION: cn-hangzhou
+  ARM64_ZONES: cn-hangzhou-j,cn-hangzhou-k,cn-hangzhou-b,cn-hangzhou-g,cn-hangzhou-h,cn-hangzhou-i
+  RUNNER_NAME: openresty-arm64-spot
+
+jobs:
+  find-cheapest:
+    runs-on: ubuntu-latest
+    outputs:
+      cheapest_instance: ${{ steps.find_cheapest.outputs.cheapest_instance }}
+      cheapest_zone: ${{ steps.find_cheapest.outputs.cheapest_zone }}
+      spot_price_limit: ${{ steps.find_cheapest.outputs.spot_price_limit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
+        run: |
+          chmod +x .github/scripts/configure-aliyun-cli.sh
+          .github/scripts/configure-aliyun-cli.sh \
+            "${{ env.ALIYUN_REGION }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+
+      - name: Find Cheapest Instance
+        id: find_cheapest
+        run: |
+          chmod +x .github/scripts/find-cheapest-instance.sh
+          .github/scripts/find-cheapest-instance.sh \
+            "${{ env.ALIYUN_REGION }}" \
+            "ecs.c8y.8xlarge,ecs.c8y.4xlarge,ecs.c8y.2xlarge,ecs.c8y.xlarge,ecs.c8y.large" \
+            "8" "64" "8" "64"
+
+  create-spot-runner:
+    needs: find-cheapest
+    runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.create_instance.outputs.instance_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Aliyun CLI
+        run: |
+          chmod +x .github/scripts/configure-aliyun-cli.sh
+          .github/scripts/configure-aliyun-cli.sh \
+            "${{ env.ALIYUN_REGION }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+
+      - name: Create Spot Instance
+        id: create_instance
+        run: |
+          chmod +x .github/scripts/create-spot-instance.sh
+          .github/scripts/create-spot-instance.sh \
+            "${{ needs.find-cheapest.outputs.cheapest_instance }}" \
+            "${{ needs.find-cheapest.outputs.cheapest_zone }}" \
+            "${{ needs.find-cheapest.outputs.spot_price_limit }}" \
+            "${{ secrets.ALIYUN_IMAGE_ID }}" \
+            "${{ secrets.ALIYUN_SECURITY_GROUP_ID }}" \
+            "${{ secrets.ALIYUN_VSWITCH_ID }}" \
+            "${{ secrets.ALIYUN_KEY_PAIR_NAME }}" \
+            "${{ secrets.GITHUB_TOKEN }}" \
+            "${{ env.RUNNER_NAME }}" \
+            "arm64"
+
+      - name: Wait for Instance Ready
+        run: |
+          chmod +x .github/scripts/wait-instance-ready.sh
+          .github/scripts/wait-instance-ready.sh \
+            "${{ steps.create_instance.outputs.instance_id }}" \
+            "600"
+
+  build-arm64:
+    needs: create-spot-runner
+    runs-on: [self-hosted, linux, ARM64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: |
+          docker build -t openresty:latest .
+          docker tag openresty:latest openresty:arm64-$(date +%Y%m%d-%H%M%S)
+
+      - name: Configure Aliyun CLI for Cleanup
+        if: needs.create-spot-runner.outputs.instance_id != ''
+        run: |
+          chmod +x .github/scripts/configure-aliyun-cli.sh
+          .github/scripts/configure-aliyun-cli.sh \
+            "${{ env.ALIYUN_REGION }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_ID }}" \
+            "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+
+      - name: Cleanup Spot Instance
+        if: needs.create-spot-runner.outputs.instance_id != ''
+        run: |
+          chmod +x .github/scripts/cleanup-instance.sh
+          .github/scripts/cleanup-instance.sh \
+            "${{ needs.create-spot-runner.outputs.instance_id }}" \
+            "true"
