@@ -18,6 +18,193 @@ log_error() {
     echo "❌ $1"
 }
 
+# 全局变量存储 spot-instance-advisor 的路径
+SPOT_INSTANCE_ADVISOR_CMD=""
+
+# 下载并安装 spot-instance-advisor
+install_spot_instance_advisor() {
+    # 检查是否已安装
+    if command -v spot-instance-advisor &> /dev/null; then
+        SPOT_INSTANCE_ADVISOR_CMD="spot-instance-advisor"
+        log_info "spot-instance-advisor is already installed"
+        return 0
+    fi
+
+    log_info "Downloading spot-instance-advisor from GitHub maskshell releases..."
+    
+    # 检测操作系统和架构
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    
+    # 标准化架构名称
+    case "$ARCH" in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            log_error "Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+    esac
+    
+    # 标准化操作系统名称
+    case "$OS" in
+        linux)
+            OS="linux"
+            ;;
+        darwin)
+            OS="darwin"
+            ;;
+        *)
+            log_error "Unsupported OS: $OS"
+            exit 1
+            ;;
+    esac
+    
+    log_info "Detected OS: $OS, Architecture: $ARCH"
+    
+    # GitHub API 获取最新 release
+    REPO="maskshell/spot-instance-advisor"
+    API_URL="https://api.github.com/repos/$REPO/releases/latest"
+    
+    log_info "Fetching latest release info from $API_URL"
+    
+    # 获取最新 release 信息
+    RELEASE_INFO=$(curl -sL "$API_URL" || {
+        log_error "Failed to fetch release info from GitHub API"
+        exit 1
+    })
+    
+    # 解析 release tag
+    TAG_NAME=$(echo "$RELEASE_INFO" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+    if [ -z "$TAG_NAME" ]; then
+        log_error "Failed to parse release tag from GitHub API"
+        exit 1
+    fi
+    
+    log_info "Latest release: $TAG_NAME"
+    
+    # 从 release assets 中查找匹配的二进制文件
+    # 可能的命名格式: spot-instance-advisor-<os>-<arch>, spot-instance-advisor-<os>-<arch>.tar.gz, etc.
+    ASSETS=$(echo "$RELEASE_INFO" | grep -o '"browser_download_url": "[^"]*' | cut -d'"' -f4)
+    
+    # 尝试匹配可能的文件名模式
+    BINARY_NAME=""
+    DOWNLOAD_URL=""
+    
+    # 优先尝试: spot-instance-advisor-<os>-<arch>
+    PATTERN="${OS}-${ARCH}"
+    for URL in $ASSETS; do
+        if echo "$URL" | grep -q "$PATTERN"; then
+            BINARY_NAME=$(basename "$URL")
+            DOWNLOAD_URL="$URL"
+            break
+        fi
+    done
+    
+    # 如果没找到，尝试其他可能的模式
+    if [ -z "$DOWNLOAD_URL" ]; then
+        # 尝试: spot-instance-advisor-<arch>
+        PATTERN="${ARCH}"
+        for URL in $ASSETS; do
+            if echo "$URL" | grep -qi "spot-instance-advisor.*${PATTERN}"; then
+                BINARY_NAME=$(basename "$URL")
+                DOWNLOAD_URL="$URL"
+                break
+            fi
+        done
+    fi
+    
+    # 如果还是没找到，尝试第一个 asset
+    if [ -z "$DOWNLOAD_URL" ]; then
+        DOWNLOAD_URL=$(echo "$ASSETS" | head -1)
+        BINARY_NAME=$(basename "$DOWNLOAD_URL")
+        log_info "Using first available asset: $BINARY_NAME"
+    fi
+    
+    if [ -z "$DOWNLOAD_URL" ]; then
+        log_error "No matching binary found in release assets"
+        exit 1
+    fi
+    
+    log_info "Downloading from: $DOWNLOAD_URL"
+    
+    # 创建临时目录
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+    
+    # 下载文件
+    DOWNLOADED_FILE="$TEMP_DIR/$BINARY_NAME"
+    if ! curl -sL -o "$DOWNLOADED_FILE" "$DOWNLOAD_URL"; then
+        log_error "Failed to download spot-instance-advisor"
+        exit 1
+    fi
+    
+    # 如果是压缩包，解压
+    if echo "$BINARY_NAME" | grep -qE '\.(tar\.gz|tgz|zip)$'; then
+        log_info "Extracting archive..."
+        if echo "$BINARY_NAME" | grep -qE '\.(tar\.gz|tgz)$'; then
+            tar -xzf "$DOWNLOADED_FILE" -C "$TEMP_DIR"
+        elif echo "$BINARY_NAME" | grep -q '\.zip$'; then
+            unzip -q "$DOWNLOADED_FILE" -d "$TEMP_DIR"
+        fi
+        # 查找解压后的二进制文件
+        BINARY_FILE=$(find "$TEMP_DIR" -name "spot-instance-advisor" -type f | head -1)
+        if [ -z "$BINARY_FILE" ]; then
+            # 如果没有找到，尝试查找任何可执行文件
+            BINARY_FILE=$(find "$TEMP_DIR" -type f -executable | head -1)
+        fi
+        if [ -z "$BINARY_FILE" ]; then
+            log_error "Failed to find binary in archive"
+            exit 1
+        fi
+        mv "$BINARY_FILE" "$TEMP_DIR/spot-instance-advisor"
+    else
+        # 直接使用下载的文件
+        mv "$DOWNLOADED_FILE" "$TEMP_DIR/spot-instance-advisor"
+    fi
+    
+    # 设置执行权限
+    chmod +x "$TEMP_DIR/spot-instance-advisor"
+    
+    # 移动到 PATH 目录
+    # 优先使用 /usr/local/bin（GitHub Actions 通常可写）
+    # 否则使用 $HOME/.local/bin
+    if [ -w "/usr/local/bin" ] 2>/dev/null; then
+        INSTALL_DIR="/usr/local/bin"
+        mv "$TEMP_DIR/spot-instance-advisor" "$INSTALL_DIR/spot-instance-advisor"
+    else
+        INSTALL_DIR="$HOME/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+        mv "$TEMP_DIR/spot-instance-advisor" "$INSTALL_DIR/spot-instance-advisor"
+        # 确保 PATH 包含安装目录
+        if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+            export PATH="$INSTALL_DIR:$PATH"
+        fi
+    fi
+    
+    log_success "spot-instance-advisor installed to $INSTALL_DIR"
+    
+    # 验证安装并设置命令路径
+    # 首先确保 PATH 已更新
+    hash -r 2>/dev/null || true
+    
+    if command -v spot-instance-advisor &> /dev/null; then
+        SPOT_INSTANCE_ADVISOR_CMD="spot-instance-advisor"
+    elif [ -f "$INSTALL_DIR/spot-instance-advisor" ]; then
+        SPOT_INSTANCE_ADVISOR_CMD="$INSTALL_DIR/spot-instance-advisor"
+        log_info "Using full path for spot-instance-advisor: $SPOT_INSTANCE_ADVISOR_CMD"
+    else
+        log_error "spot-instance-advisor binary not found at $INSTALL_DIR"
+        exit 1
+    fi
+    
+    log_success "spot-instance-advisor is ready to use"
+}
+
 # 参数检查
 if [ $# -lt 6 ]; then
     log_error "Usage: $0 <region> <instance-types> <min-cpu> <max-cpu> <min-memory> <max-memory>"
@@ -36,8 +223,11 @@ log_info "Instance types: $INSTANCE_TYPES"
 log_info "CPU range: $MIN_CPU - $MAX_CPU"
 log_info "Memory range: $MIN_MEMORY - $MAX_MEMORY"
 
+# 确保 spot-instance-advisor 已安装
+install_spot_instance_advisor
+
 # 查询价格
-ALL_PRICES=$(spot-instance-advisor \
+ALL_PRICES=$($SPOT_INSTANCE_ADVISOR_CMD \
     --region "$REGION" \
     --instance-types "$INSTANCE_TYPES" \
     --min-cpu "$MIN_CPU" \
