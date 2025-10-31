@@ -277,8 +277,63 @@ log_info "Running spot-instance-advisor with parameters..."
 # 查询价格
 ALL_PRICES=$($SPOT_INSTANCE_ADVISOR_CMD "${ADVISOR_ARGS[@]}")
 
-# 查找最便宜的实例
-CHEAPEST=$(echo "$ALL_PRICES" | jq -r '.spot_prices[] | select(.instance_type | startswith("ecs.c8y")) | select(.price_per_core != null) | [.instance_type, .zone, .price_per_core] | @csv' | sort -t',' -k3 -n | head -1)
+# 调试：打印返回的 JSON 结构（仅前500字符）
+if [ -n "$DEBUG" ]; then
+    log_info "JSON response preview:"
+    echo "$ALL_PRICES" | head -c 500
+    echo ""
+fi
+
+# 检测 JSON 类型并解析
+# spot-instance-advisor 可能返回数组或对象，需要灵活处理
+JSON_TYPE=$(echo "$ALL_PRICES" | jq -r 'type' 2>/dev/null)
+
+if [ "$JSON_TYPE" = "array" ]; then
+    # 格式：直接是数组 [{...}, {...}]
+    log_info "Detected JSON format: array"
+    # 尝试多种可能的字段名（支持大小写变化）
+    CHEAPEST=$(echo "$ALL_PRICES" | jq -r '.[] | 
+        select((.instance_type? // .InstanceType? // .instanceType?) | startswith("ecs.c8y")) | 
+        select((.price_per_core? // .PricePerCore? // .pricePerCore?) != null) | 
+        [
+            (.instance_type? // .InstanceType? // .instanceType?),
+            (.zone? // .Zone? // .availability_zone? // .AvailabilityZone?),
+            (.price_per_core? // .PricePerCore? // .pricePerCore?)
+        ] | @csv' 2>/dev/null | sort -t',' -k3 -n | head -1)
+elif [ "$JSON_TYPE" = "object" ]; then
+    # 格式：对象，可能有 spot_prices 字段或其他字段
+    log_info "Detected JSON format: object"
+    # 尝试 .spot_prices[]
+    if echo "$ALL_PRICES" | jq -e '.spot_prices' >/dev/null 2>&1; then
+        CHEAPEST=$(echo "$ALL_PRICES" | jq -r '.spot_prices[] | 
+            select((.instance_type? // .InstanceType? // .instanceType?) | startswith("ecs.c8y")) | 
+            select((.price_per_core? // .PricePerCore? // .pricePerCore?) != null) | 
+            [
+                (.instance_type? // .InstanceType? // .instanceType?),
+                (.zone? // .Zone? // .availability_zone? // .AvailabilityZone?),
+                (.price_per_core? // .PricePerCore? // .pricePerCore?)
+            ] | @csv' 2>/dev/null | sort -t',' -k3 -n | head -1)
+    else
+        # 尝试查找包含数组的第一个字段
+        FIRST_ARRAY_KEY=$(echo "$ALL_PRICES" | jq -r 'to_entries[] | select(.value | type == "array") | .key' 2>/dev/null | head -1)
+        if [ -n "$FIRST_ARRAY_KEY" ]; then
+            CHEAPEST=$(echo "$ALL_PRICES" | jq -r ".[\"$FIRST_ARRAY_KEY\"][] | 
+                select((.instance_type? // .InstanceType? // .instanceType?) | startswith("ecs.c8y")) | 
+                select((.price_per_core? // .PricePerCore? // .pricePerCore?) != null) | 
+                [
+                    (.instance_type? // .InstanceType? // .instanceType?),
+                    (.zone? // .Zone? // .availability_zone? // .AvailabilityZone?),
+                    (.price_per_core? // .PricePerCore? // .pricePerCore?)
+                ] | @csv" 2>/dev/null | sort -t',' -k3 -n | head -1)
+        fi
+    fi
+else
+    log_error "Unexpected JSON format: $JSON_TYPE"
+    log_error "JSON response:"
+    echo "$ALL_PRICES" | head -c 1000
+    echo ""
+    exit 1
+fi
 
 if [ -z "$CHEAPEST" ]; then
     log_error "No suitable instance found"
