@@ -207,7 +207,8 @@ jobs:
   cleanup:
     needs: [create-spot-runner, build-arm64]
     runs-on: ubuntu-latest
-    if: always()
+    # Only cleanup if build job completed (success or failure), not if it was skipped
+    if: always() && (needs.build-arm64.result == 'success' || needs.build-arm64.result == 'failure')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -225,6 +226,7 @@ jobs:
         if: needs.create-spot-runner.outputs.instance_id != ''
         run: |
           echo "Cleaning up instance: ${{ needs.create-spot-runner.outputs.instance_id }}"
+          echo "Build job result: ${{ needs.build-arm64.result }}"
           python3 .github/scripts/cleanup-instance.py \
             "${{ needs.create-spot-runner.outputs.instance_id }}" \
             "true"
