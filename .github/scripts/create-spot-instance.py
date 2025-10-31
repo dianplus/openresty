@@ -78,11 +78,10 @@ def create_instance(
     user_data_b64 = base64.b64encode(user_data.encode()).decode()
     
     # Build aliyun CLI command
-    # Note: --Output is not a valid parameter for RunInstances
-    # Use --output json (lowercase) as a global option, or parse default format
+    # Note: aliyun CLI doesn't support --output as a global option
+    # We'll parse the default table format or use output redirection
     cmd = [
         "aliyun",
-        "--output", "json",  # Global output format option
         "ecs",
         "RunInstances",
         "--ImageId", image_id,
@@ -108,24 +107,48 @@ def create_instance(
             check=True,
         )
         
-        # Parse JSON response
-        response = json.loads(result.stdout)
+        # aliyun CLI default output format
+        # Try to parse JSON first, then fallback to other formats
+        response_text = result.stdout.strip()
         
-        # Extract instance ID
-        instance_id = response.get("InstanceIdSets", {}).get("InstanceIdSet", [])
-        if instance_id:
-            return instance_id[0]
+        # Try parsing as JSON
+        response = None
+        if response_text.startswith("{") or response_text.startswith("["):
+            try:
+                response = json.loads(response_text)
+            except json.JSONDecodeError as e:
+                log_error(f"Failed to parse JSON: {e}")
+                log_error(f"Response: {response_text[:500]}")
+                return None
+        
+        if response:
+            # Extract instance ID from JSON response
+            instance_id = response.get("InstanceIdSets", {}).get("InstanceIdSet", [])
+            if instance_id:
+                return instance_id[0]
+            else:
+                log_error("No instance ID in JSON response")
+                log_error(f"Response structure: {json.dumps(response, indent=2)[:500]}")
+                return None
         else:
-            log_error("No instance ID in response")
-            return None
+            # Try to extract instance ID using regex (for table format or other formats)
+            import re
+            # Instance ID pattern: i- followed by 17 alphanumeric characters
+            instance_id_match = re.search(r'(i-[a-z0-9]{17})', response_text)
+            if instance_id_match:
+                return instance_id_match.group(1)
+            else:
+                log_error(f"Could not parse response format. Response: {response_text[:500]}")
+                return None
             
     except subprocess.CalledProcessError as e:
         log_error(f"Failed to create instance: {e}")
         log_error(f"Error output: {e.stderr}")
+        log_error(f"Standard output: {e.stdout[:500] if e.stdout else 'None'}")
         return None
-    except json.JSONDecodeError as e:
-        log_error(f"Failed to parse response: {e}")
-        log_error(f"Response: {result.stdout[:500]}")
+    except Exception as e:
+        log_error(f"Unexpected error: {e}")
+        log_error(f"Response: {result.stdout[:500] if 'result' in locals() else 'N/A'}")
         return None
 
 
