@@ -11,66 +11,33 @@
 - Configuration layout: Places default virtual host configuration in `/etc/openresty/conf.d/` to align with overall structure.
 - Port exposure: Explicitly exposes ports 80 and 443 for container orchestration and local development.
 
-## Build image with podman
+## Automated Build
 
-### Pass proxy arguments to podman build
+This project uses GitHub Actions for automated builds, supporting both AMD64 and ARM64 architectures:
 
-```shell
-podman login \
-  --username=your@mail.domain \
-  your.registry.domain
+### Build Triggers
 
-podman manifest create \
-  your.registry.domain/dianplus/openresty:1.27.1.2-alpine
+- **Automatic**: Push to `develop`/`master` branches or create `v*` tags
+- **Manual**: Run workflows manually through GitHub Actions page
 
-podman manifest create \
-  your.registry.domain/dianplus/openresty:1.27.1.2-0-alpine
+### Image Access
 
-podman build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --manifest your.registry.domain/dianplus/openresty:1.27.1.2-alpine \
-  .
+After build completion, images are pushed to GitHub Container Registry:
 
-podman manifest push \
-  --all your.registry.domain/dianplus/openresty:1.27.1.2-alpine
-```
+- **AMD64 Image**: `ghcr.io/dianplus/openresty`
+- **ARM64 Image**: `ghcr.io/dianplus/openresty` (with `-arm64` suffix)
 
-## Build image with docker buildx
+### Tag Strategy
 
-### Prepare buildx
+- `develop` branch → `develop`, `develop-<sha>`
+- `master` branch → `latest`, `latest-<sha>`
+- Version tags → `v1.0.0`, `v1.0.0-<sha>`
 
-```shell
-docker login \
-  --username=your@mail.domain \
-  your.registry.domain
+### Performance Advantages
 
-docker buildx create --name dianplus-builder --use
-docker buildx inspect --bootstrap
-```
+- **Native Build**: Uses Aliyun spot instances, both AMD64 and ARM64 are native architectures
+- **Fast Build**: Build time 15-20 minutes
+- **Ultra Low Cost**: Single build cost approximately ¥0.05-0.1
+- **Auto Cleanup**: Instances destroyed immediately after build completion
 
-### Build and push multi-arch image
-
-```shell
-# Build and push 1.27.1.2-alpine (amd64 + arm64)
-docker buildx build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --tag your.registry.domain/dianplus/openresty:1.27.1.2-alpine \
-  --push \
-  .
-
-# Optionally, also push an additional tag (same build context)
-docker buildx build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --tag your.registry.domain/dianplus/openresty:1.27.1.2-0-alpine \
-  --push \
-  .
-```
+For detailed configuration, please refer to [GitHub Workflows Documentation](.github/workflows/README.md).
