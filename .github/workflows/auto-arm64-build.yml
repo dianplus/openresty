@@ -5,6 +5,10 @@ on:
     branches: [ master, develop ]
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 env:
   ALIYUN_REGION: cn-hangzhou
   ARM64_ZONES: cn-hangzhou-j,cn-hangzhou-k,cn-hangzhou-b,cn-hangzhou-g,cn-hangzhou-h,cn-hangzhou-i
