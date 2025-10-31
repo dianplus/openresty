@@ -78,8 +78,11 @@ def create_instance(
     user_data_b64 = base64.b64encode(user_data.encode()).decode()
     
     # Build aliyun CLI command
+    # Note: --Output is not a valid parameter for RunInstances
+    # Use --output json (lowercase) as a global option, or parse default format
     cmd = [
         "aliyun",
+        "--output", "json",  # Global output format option
         "ecs",
         "RunInstances",
         "--ImageId", image_id,
@@ -93,7 +96,6 @@ def create_instance(
         "--SystemDisk.Size", "40",
         "--KeyPairName", key_pair_name,
         "--UserData", user_data_b64,
-        "--Output", "json",
     ]
     
     log_info("Creating ECS instance...")
@@ -149,6 +151,20 @@ def main():
     log_info(f"Zone: {zone}")
     log_info(f"Spot price limit: {spot_price_limit}")
     log_info(f"Architecture: {architecture}")
+    
+    # Validate required parameters
+    if not image_id:
+        log_error("Image ID is required but not provided")
+        sys.exit(1)
+    if not security_group_id:
+        log_error("Security Group ID is required but not provided")
+        sys.exit(1)
+    if not vswitch_id:
+        log_error("VSwitch ID is required but not provided")
+        sys.exit(1)
+    if not key_pair_name:
+        log_error("Key Pair Name is required but not provided")
+        sys.exit(1)
     
     # Generate user data
     log_info("Generating user data script...")
