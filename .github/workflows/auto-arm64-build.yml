@@ -31,6 +31,9 @@ jobs:
 
       - name: Find Cheapest Instance
         id: find_cheapest
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         run: |
           chmod +x .github/scripts/find-cheapest-instance.sh
           .github/scripts/find-cheapest-instance.sh \

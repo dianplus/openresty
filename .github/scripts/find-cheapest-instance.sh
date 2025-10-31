@@ -226,15 +226,56 @@ log_info "Memory range: $MIN_MEMORY - $MAX_MEMORY"
 # 确保 spot-instance-advisor 已安装
 install_spot_instance_advisor
 
+# 获取阿里云凭证（优先从环境变量，其次从 aliyun CLI 配置）
+if [ -n "$ALIYUN_ACCESS_KEY_ID" ] && [ -n "$ALIYUN_ACCESS_KEY_SECRET" ]; then
+    ACCESS_KEY_ID="$ALIYUN_ACCESS_KEY_ID"
+    ACCESS_KEY_SECRET="$ALIYUN_ACCESS_KEY_SECRET"
+    log_info "Using credentials from environment variables"
+elif [ -f "$HOME/.aliyun/config.json" ]; then
+    # 从 aliyun CLI 配置文件中读取
+    log_info "Reading credentials from aliyun CLI config file"
+    if command -v jq &> /dev/null; then
+        # 使用 jq 解析 JSON（更可靠）
+        ACCESS_KEY_ID=$(jq -r '.profiles[0].mode_ak.access_key_id // empty' "$HOME/.aliyun/config.json" 2>/dev/null)
+        ACCESS_KEY_SECRET=$(jq -r '.profiles[0].mode_ak.access_key_secret // empty' "$HOME/.aliyun/config.json" 2>/dev/null)
+    else
+        # 使用 grep 解析（备用方案）
+        ACCESS_KEY_ID=$(grep -o '"access_key_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$HOME/.aliyun/config.json" | head -1 | sed 's/.*"access_key_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        ACCESS_KEY_SECRET=$(grep -o '"access_key_secret"[[:space:]]*:[[:space:]]*"[^"]*"' "$HOME/.aliyun/config.json" | head -1 | sed 's/.*"access_key_secret"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    fi
+else
+    log_error "Aliyun credentials not found. Please set ALIYUN_ACCESS_KEY_ID and ALIYUN_ACCESS_KEY_SECRET environment variables or configure aliyun CLI."
+    exit 1
+fi
+
+if [ -z "$ACCESS_KEY_ID" ] || [ -z "$ACCESS_KEY_SECRET" ]; then
+    log_error "Failed to get Aliyun credentials"
+    exit 1
+fi
+
+# 构建 spot-instance-advisor 命令参数
+# 使用正确的参数格式: -key=value 而不是 --key value
+ADVISOR_ARGS=(
+    "-accessKeyId=$ACCESS_KEY_ID"
+    "-accessKeySecret=$ACCESS_KEY_SECRET"
+    "-region=$REGION"
+    "-mincpu=$MIN_CPU"
+    "-maxcpu=$MAX_CPU"
+    "-minmem=$MIN_MEMORY"
+    "-maxmem=$MAX_MEMORY"
+    "-resolution=7"
+    "-limit=20"
+    "--json"
+)
+
+# 如果提供了实例类型（family），添加 -family 参数
+if [ -n "$INSTANCE_TYPES" ] && [ "$INSTANCE_TYPES" != "" ]; then
+    ADVISOR_ARGS+=("-family=$INSTANCE_TYPES")
+fi
+
+log_info "Running spot-instance-advisor with parameters..."
 # 查询价格
-ALL_PRICES=$($SPOT_INSTANCE_ADVISOR_CMD \
-    --region "$REGION" \
-    --instance-types "$INSTANCE_TYPES" \
-    --min-cpu "$MIN_CPU" \
-    --max-cpu "$MAX_CPU" \
-    --min-memory "$MIN_MEMORY" \
-    --max-memory "$MAX_MEMORY" \
-    --output json)
+ALL_PRICES=$($SPOT_INSTANCE_ADVISOR_CMD "${ADVISOR_ARGS[@]}")
 
 # 查找最便宜的实例
 CHEAPEST=$(echo "$ALL_PRICES" | jq -r '.spot_prices[] | select(.instance_type | startswith("ecs.c8y")) | select(.price_per_core != null) | [.instance_type, .zone, .price_per_core] | @csv' | sort -t',' -k3 -n | head -1)
