@@ -1,6 +1,18 @@
 # Runner Registration Token 获取失败排查指南
 
+## 重要说明
+
+**当前配置要求使用 Personal Access Token (PAT)**
+
+Workflow 已配置为**必须**使用 `RUNNER_REGISTRATION_PAT` secret，不再使用 `GITHUB_TOKEN`。这是为了避免权限问题。
+
 ## 错误信息
+
+```
+❌ RUNNER_REGISTRATION_PAT secret is not set
+```
+
+或
 
 ```
 ❌ Permission denied: GitHub token lacks required permissions
@@ -9,7 +21,7 @@
 
 ## 原因分析
 
-`GITHUB_TOKEN` 在某些情况下可能没有足够的权限来获取 runner registration token，即使设置了 `permissions: actions:write`。
+`GITHUB_TOKEN` 在某些情况下可能没有足够的权限来获取 runner registration token，即使设置了 `permissions: actions:write`。因此，我们要求使用 Personal Access Token (PAT) 来确保可靠的权限。
 
 ## 解决方案
 
