@@ -65,26 +65,33 @@ jobs:
         run: |
           chmod +x .github/scripts/get-runner-registration-token.py
           echo "Fetching registration token..."
-          # Run script and capture stdout (token) and stderr (logs) separately
+          # Run script - stderr will show logs, stdout will have token if successful
+          set +e
           REGISTRATION_TOKEN=$(python3 .github/scripts/get-runner-registration-token.py \
             "${{ secrets.GITHUB_TOKEN }}" \
             "dianplus" \
             "openresty" 2>&1)
-          EXIT_CODE=${PIPESTATUS[0]}
+          EXIT_CODE=$?
+          set -e
           
           if [ $EXIT_CODE -ne 0 ]; then
             echo "❌ Failed to get registration token (exit code: $EXIT_CODE)"
-            echo "Error output:"
+            echo "Output:"
             echo "$REGISTRATION_TOKEN"
             exit 1
           fi
           
-          if [ -z "$REGISTRATION_TOKEN" ]; then
+          # Extract token (should be the last line if script succeeded)
+          TOKEN=$(echo "$REGISTRATION_TOKEN" | tail -1)
+          
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "" ]; then
             echo "❌ Registration token is empty"
+            echo "Full output:"
+            echo "$REGISTRATION_TOKEN"
             exit 1
           fi
           
-          echo "registration_token=$REGISTRATION_TOKEN" >> $GITHUB_OUTPUT
+          echo "registration_token=$TOKEN" >> $GITHUB_OUTPUT
           echo "✓ Registration token obtained (hidden for security)"
 
       - name: Create Spot Instance
