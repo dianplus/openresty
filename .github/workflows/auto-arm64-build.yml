@@ -59,6 +59,14 @@ jobs:
 
       - name: Create Spot Instance
         id: create_instance
+        env:
+          ALIYUN_VSWITCH_ID_B: ${{ secrets.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_G: ${{ secrets.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ secrets.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ secrets.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ secrets.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ secrets.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID: ${{ secrets.ALIYUN_VSWITCH_ID }}
         run: |
           python3 .github/scripts/create-spot-instance.py \
             "${{ needs.find-cheapest.outputs.cheapest_instance }}" \

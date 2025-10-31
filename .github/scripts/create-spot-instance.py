@@ -152,10 +152,36 @@ def create_instance(
         return None
 
 
+def get_vswitch_id_for_zone(zone: str) -> Optional[str]:
+    """Get VSwitch ID for the given zone.
+    
+    Zone format: cn-hangzhou-{zone_suffix} (e.g., cn-hangzhou-j)
+    Tries ALIYUN_VSWITCH_ID_{ZONE_SUFFIX} first, falls back to ALIYUN_VSWITCH_ID
+    """
+    # Extract zone suffix (e.g., 'j' from 'cn-hangzhou-j')
+    zone_suffix = zone.split("-")[-1].upper() if "-" in zone else ""
+    
+    # Try zone-specific vswitch ID first
+    zone_vswitch_key = f"ALIYUN_VSWITCH_ID_{zone_suffix}"
+    zone_vswitch_id = os.environ.get(zone_vswitch_key)
+    
+    if zone_vswitch_id:
+        log_info(f"Using zone-specific VSwitch ID from {zone_vswitch_key}")
+        return zone_vswitch_id
+    
+    # Fallback to default VSwitch ID
+    fallback_vswitch_id = os.environ.get("ALIYUN_VSWITCH_ID")
+    if fallback_vswitch_id:
+        log_info(f"Using fallback VSwitch ID (ALIYUN_VSWITCH_ID)")
+        return fallback_vswitch_id
+    
+    return None
+
+
 def main():
     """Main function."""
     if len(sys.argv) < 11:
-        log_error(f"Usage: {sys.argv[0]} <instance-type> <zone> <spot-price-limit> <image-id> <security-group-id> <vswitch-id> <key-pair-name> <github-token> <runner-name> <architecture>")
+        log_error(f"Usage: {sys.argv[0]} <instance-type> <zone> <spot-price-limit> <image-id> <security-group-id> <vswitch-id-fallback> <key-pair-name> <github-token> <runner-name> <architecture>")
         sys.exit(1)
     
     instance_type = sys.argv[1]
@@ -163,7 +189,7 @@ def main():
     spot_price_limit = sys.argv[3]
     image_id = sys.argv[4]
     security_group_id = sys.argv[5]
-    vswitch_id = sys.argv[6]
+    vswitch_id_fallback = sys.argv[6]  # Fallback vswitch ID (can be empty if using zone-specific)
     key_pair_name = sys.argv[7]
     github_token = sys.argv[8]
     runner_name = sys.argv[9]
@@ -175,15 +201,25 @@ def main():
     log_info(f"Spot price limit: {spot_price_limit}")
     log_info(f"Architecture: {architecture}")
     
+    # Get VSwitch ID based on zone
+    vswitch_id = get_vswitch_id_for_zone(zone)
+    if not vswitch_id:
+        # Use fallback if provided
+        if vswitch_id_fallback:
+            vswitch_id = vswitch_id_fallback
+            log_info("Using fallback VSwitch ID from parameter")
+        else:
+            log_error(f"VSwitch ID not found for zone {zone} and no fallback provided")
+            sys.exit(1)
+    
+    log_info(f"Selected VSwitch ID: {vswitch_id[:20]}...")
+    
     # Validate required parameters
     if not image_id:
         log_error("Image ID is required but not provided")
         sys.exit(1)
     if not security_group_id:
         log_error("Security Group ID is required but not provided")
-        sys.exit(1)
-    if not vswitch_id:
-        log_error("VSwitch ID is required but not provided")
         sys.exit(1)
     if not key_pair_name:
         log_error("Key Pair Name is required but not provided")
@@ -200,7 +236,7 @@ def main():
         spot_price_limit=spot_price_limit,
         image_id=image_id,
         security_group_id=security_group_id,
-        vswitch_id=vswitch_id,
+        vswitch_id=vswitch_id,  # Use zone-specific vswitch ID
         key_pair_name=key_pair_name,
         user_data=user_data,
     )
