@@ -1,12 +1,13 @@
 name: Build AMD64
 
 on:
-  push:
-    branches:
-      - develop
-      - master
-    tags:
-      - 'v*'
+  # 暂时注释掉 push 触发，避免在测试后续迭代时触发无效构建
+  # push:
+  #   branches:
+  #     - develop
+  #     - master
+  #   tags:
+  #     - 'v*'
   workflow_dispatch:
 
 env:
