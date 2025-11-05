@@ -19,6 +19,29 @@ INSTANCE_NAME="${INSTANCE_NAME:-}"
 USER_DATA="${USER_DATA:-}"
 ARCH="${ARCH:-amd64}"  # amd64 或 arm64
 
+# 根据架构设置默认实例类型（如果未指定）
+# AMD64: CPU:RAM = 1:1，最小 8c8g（8 核 8GB）
+# ARM64: CPU:RAM = 1:2，最小 8c16g（8 核 16GB），限制为 ecs.c8y,ecs.c8r 实例族
+if [[ -z "${INSTANCE_TYPE}" ]]; then
+  if [[ "${ARCH}" == "amd64" ]]; then
+    # AMD64 默认实例类型：需要 8c8g（8 核 8GB）规格
+    # 注意：需要根据实际阿里云实例规格调整，确保符合 8c8g 和 1:1 比例
+    # 示例可能是 ecs.c7.2xlarge（如果配置为 8vCPU 8GB）或其他符合规格的实例类型
+    echo "Error: INSTANCE_TYPE is required for AMD64 architecture" >&2
+    echo "Please specify an instance type that meets 8c8g (8 CPU, 8GB RAM) and 1:1 ratio" >&2
+    exit 1
+  elif [[ "${ARCH}" == "arm64" ]]; then
+    # ARM64 默认实例类型：需要 8c16g（8 核 16GB）规格
+    # 限制为 ecs.c8y 或 ecs.c8r 实例族
+    echo "Error: INSTANCE_TYPE is required for ARM64 architecture" >&2
+    echo "Please specify an instance type from ecs.c8y or ecs.c8r family that meets 8c16g (8 CPU, 16GB RAM) and 1:2 ratio" >&2
+    exit 1
+  else
+    echo "Error: Unsupported architecture: ${ARCH}" >&2
+    exit 1
+  fi
+fi
+
 # 验证必需参数
 if [[ -z "${ALIYUN_ACCESS_KEY_ID}" ]]; then
   echo "Error: ALIYUN_ACCESS_KEY_ID is required" >&2
@@ -55,10 +78,7 @@ if [[ -z "${ALIYUN_VSWITCH_ID}" ]]; then
   exit 1
 fi
 
-if [[ -z "${INSTANCE_TYPE}" ]]; then
-  echo "Error: INSTANCE_TYPE is required" >&2
-  exit 1
-fi
+# INSTANCE_TYPE 验证已在上面处理（如果未指定则使用默认值）
 
 if [[ -z "${INSTANCE_NAME}" ]]; then
   echo "Error: INSTANCE_NAME is required" >&2
