@@ -1,76 +1,40 @@
 # OpenResty for DianPlus
 
-## Differences from upstream OpenResty alpine Dockerfile
+## 上游 OpenResty Dockerfile
 
-- Upstream reference: `https://github.com/openresty/docker-openresty/blob/master/alpine/Dockerfile`
-- Parameterized paths and layout: Configurable install prefix and module/config/log/run directories, adopting `/etc/openresty` structure for better system integration.
-- User and permissions: Creates `openresty` user and group with proper log directory ownership for minimal privilege operation.
-- Package sources and networking: Switches Alpine repository to Aliyun mirror for better network stability in China.
-- Lua runtime components: Additional runtime dependencies `lua-sec` and `lua-socket` for enhanced scripting capabilities.
-- Third-party modules: Integrates Tengine's `dyups` dynamic upstream module into the build process.
-- Configuration layout: Places default virtual host configuration in `/etc/openresty/conf.d/` to align with overall structure.
-- Port exposure: Explicitly exposes ports 80 and 443 for container orchestration and local development.
+- 上游参考: `https://github.com/openresty/docker-openresty/blob/master/alpine/Dockerfile`
 
-## Build image with podman
+## 自动化构建
 
-### Pass proxy arguments to podman build
+本项目使用 GitHub Actions 进行自动化构建，支持 AMD64 和 ARM64 架构
 
-```shell
-podman login \
-  --username=your@mail.domain \
-  your.registry.domain
+### 构建触发器
 
-podman manifest create \
-  your.registry.domain/dianplus/openresty:1.27.1.2-alpine
+- **自动触发**: 推送到 `develop`/`master` 分支时，或创建 `v*` 标签时自动触发
+- **手动触发**: 通过 GitHub Actions 页面手动运行工作流
 
-podman manifest create \
-  your.registry.domain/dianplus/openresty:1.27.1.2-0-alpine
+### 镜像访问
 
-podman build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --manifest your.registry.domain/dianplus/openresty:1.27.1.2-alpine \
-  .
+构建完成后，镜像推送到 GitHub Container Registry：
 
-podman manifest push \
-  --all your.registry.domain/dianplus/openresty:1.27.1.2-alpine
-```
+- **多架构合并镜像**（推荐）: `ghcr.io/dianplus/openresty:<tag>` - Docker 自动匹配平台
+- **架构特定镜像**（调试用）: `ghcr.io/dianplus/openresty:<tag>-amd64` 或 `ghcr.io/dianplus/openresty:<tag>-arm64`
 
-## Build image with docker buildx
+### 标签策略
 
-### Prepare buildx
+项目采用两阶段标签策略：
 
-```shell
-docker login \
-  --username=your@mail.domain \
-  your.registry.domain
+- 构建阶段创建架构特定标签（如 `latest-amd64`、`latest-arm64`）
+- 合并阶段创建统一标签（如 `latest`）
 
-docker buildx create --name dianplus-builder --use
-docker buildx inspect --bootstrap
-```
+用户可直接拉取统一标签，Docker 会自动匹配平台。
 
-### Build and push multi-arch image
+详细说明请参考 [需求文档 - 标签策略](requirements/02-workflows.md#标签策略说明)。
 
-```shell
-# Build and push 1.27.1.2-alpine (amd64 + arm64)
-docker buildx build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --tag your.registry.domain/dianplus/openresty:1.27.1.2-alpine \
-  --push \
-  .
+### 优势
 
-# Optionally, also push an additional tag (same build context)
-docker buildx build \
-  --build-arg NO_PROXY=192.168.*,10.*,172.*,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,*.aliyun.com,*.aliyuncs.com,*.dianplus.cn,*.dianjia.io,*.taobao.com \
-  --build-arg HTTP_PROXY=http://192.168.168.105:1088 \
-  --build-arg HTTPS_PROXY=http://192.168.168.105:1088 \
-  --platform linux/amd64,linux/arm64 \
-  --tag your.registry.domain/dianplus/openresty:1.27.1.2-0-alpine \
-  --push \
-  .
-```
+- **原生构建**: AMD64 和 ARM64 都在原生架构实例上构建，无 QEMU 模拟开销
+- **超低成本**: 单次构建成本约 ¥0.05-0.1
+- **自动清理**: 构建完成后自动销毁 Spot 实例
+
+详细配置请参考 [需求文档](requirements/README.md)。
