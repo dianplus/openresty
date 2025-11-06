@@ -133,7 +133,8 @@ jobs:
       - name: Wait for Runner Online
         id: wait-runner
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 使用具备仓库管理权限的 PAT，避免 403 Resource not accessible by integration
+          GITHUB_TOKEN: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
           TIMEOUT: 300
