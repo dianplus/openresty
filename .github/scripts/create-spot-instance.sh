@@ -135,17 +135,28 @@ fi
 # 添加 User Data（如果提供）
 # 优先使用文件方式，避免环境变量传递多行脚本的问题
 if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
-  # 从文件读取 User Data
-  USER_DATA=$(cat "${USER_DATA_FILE}")
-  USER_DATA_SIZE=$(wc -c < "${USER_DATA_FILE}")
-  echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes)" >&2
+  # 从文件读取 User Data，并规范化换行（去除 CRLF），避免 /bin/bash^M 导致 127
+  RAW_USER_DATA=$(cat "${USER_DATA_FILE}")
+  USER_DATA=$(printf "%s" "${RAW_USER_DATA}" | sed 's/\r$//')
+  USER_DATA_SIZE=$(printf "%s" "${USER_DATA}" | wc -c | awk '{print $1}')
+  echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes, normalized)" >&2
 elif [[ -n "${USER_DATA}" ]]; then
-  # 从环境变量读取 User Data（向后兼容）
+  # 从环境变量读取 User Data（向后兼容），并规范化换行
+  USER_DATA=$(printf "%s" "${USER_DATA}" | sed 's/\r$//')
   USER_DATA_SIZE=${#USER_DATA}
-  echo "Using User Data from environment variable (${USER_DATA_SIZE} bytes)" >&2
+  echo "Using User Data from environment variable (${USER_DATA_SIZE} bytes, normalized)" >&2
 else
   USER_DATA=""
   echo "No User Data provided" >&2
+fi
+
+# 安全检查：确保存在 shebang，否则可能以 /bin/sh 执行导致失败
+if [[ -n "${USER_DATA}" ]]; then
+  FIRST_LINE=$(printf "%s" "${USER_DATA}" | head -n1)
+  if [[ "${FIRST_LINE}" != "#!"* ]]; then
+    echo "User Data missing shebang; prepending #!/bin/bash" >&2
+    USER_DATA=$(printf "#!/bin/bash\n%s" "${USER_DATA}")
+  fi
 fi
 
 if [[ -n "${USER_DATA}" ]]; then
