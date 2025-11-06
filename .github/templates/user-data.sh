@@ -52,12 +52,18 @@ if [[ -n "${HTTP_PROXY}" ]]; then
   echo "Setting HTTP_PROXY: ${HTTP_PROXY}"
   export HTTP_PROXY="${HTTP_PROXY}"
   echo "export HTTP_PROXY=\"${HTTP_PROXY}\"" >> /etc/environment
+  # 同步设置小写变量，确保 curl 等工具生效
+  export http_proxy="${HTTP_PROXY}"
+  echo "export http_proxy=\"${HTTP_PROXY}\"" >> /etc/environment
 fi
 
 if [[ -n "${HTTPS_PROXY}" ]]; then
   echo "Setting HTTPS_PROXY: ${HTTPS_PROXY}"
   export HTTPS_PROXY="${HTTPS_PROXY}"
   echo "export HTTPS_PROXY=\"${HTTPS_PROXY}\"" >> /etc/environment
+  # 同步设置小写变量，确保 curl 等工具生效
+  export https_proxy="${HTTPS_PROXY}"
+  echo "export https_proxy=\"${HTTPS_PROXY}\"" >> /etc/environment
 fi
 
 if [[ -n "${NO_PROXY}" ]]; then
@@ -112,7 +118,12 @@ echo "Using Runner version: ${RUNNER_VERSION}"
 RUNNER_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 
 cd "${RUNNER_DIR}"
-curl -o runner.tar.gz -L "${RUNNER_URL}"
+echo "Downloading runner from: ${RUNNER_URL}"
+# 增加重试与超时，提升在代理/弱网环境的鲁棒性
+curl -o runner.tar.gz -L \
+  --retry 5 --retry-all-errors \
+  --connect-timeout 10 --max-time 300 \
+  "${RUNNER_URL}"
 tar xzf runner.tar.gz
 rm runner.tar.gz
 
