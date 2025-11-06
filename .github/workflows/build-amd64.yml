@@ -72,6 +72,8 @@ jobs:
           HTTP_PROXY: ${{ vars.HTTP_PROXY }}
           HTTPS_PROXY: ${{ vars.HTTPS_PROXY }}
           NO_PROXY: ${{ vars.NO_PROXY }}
+          # 实例自毁配置：使用实例角色获取权限
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
           USER_DATA=$(bash .github/scripts/generate-user-data.sh)
           echo "user_data<<EOF" >> $GITHUB_OUTPUT
@@ -89,6 +91,7 @@ jobs:
           ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
           ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_K }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
           INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE_AMD64 }}
           INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
           ARCH: ${{ env.ARCH }}
@@ -173,6 +176,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install Aliyun CLI
+        uses: aliyun/setup-aliyun-cli-action@v1
+        # 注意：自毁脚本使用实例角色认证，不需要配置 Access Key
+        # 此 action 仅用于安装 aliyun cli，不进行配置，使用默认版本
 
       - name: Set up Docker
         uses: docker/setup-docker-action@v3

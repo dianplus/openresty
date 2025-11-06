@@ -136,8 +136,8 @@ aliyun ecs AuthorizeSecurityGroup \
 | `ALIYUN_VSWITCH_ID_I` | 可用区 `${ALIYUN_REGION_ID}-i` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_J` | 可用区 `${ALIYUN_REGION_ID}-j` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_K` | 可用区 `${ALIYUN_REGION_ID}-k` 的 VSwitch ID（可选） | vsw-xxx |
-| `ALIYUN_ARM64_IMAGE_ID` | ARM64 镜像 ID（推荐 Alibaba Cloud Linux 4） | m-xxx |
-| `ALIYUN_AMD64_IMAGE_ID` | AMD64 镜像 ID（推荐 Alibaba Cloud Linux 4） | m-xxx |
+| `ALIYUN_ARM64_IMAGE_ID` | ARM64 镜像 ID（推荐 Ubuntu 24） | m-xxx |
+| `ALIYUN_AMD64_IMAGE_ID` | AMD64 镜像 ID（推荐 Ubuntu 24） | m-xxx |
 | `ALIYUN_KEY_PAIR_NAME` | 用于 root 访问的 SSH 密钥对名称 | my-key-pair |
 
 ### 3. 权限配置
@@ -262,21 +262,21 @@ aliyun ecs AuthorizeSecurityGroup \
 
 如果使用实例角色实现实例内部自毁机制，需要创建独立的 RAM 角色并授予以下权限：
 
+**权限策略示例**：
+
 ```json
 {
   "Version": "1",
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "ecs:DeleteInstance"
-      ],
-      "Resource": [
-        "acs:ecs:${REGION_ID}:*:instance/*"
-      ],
+      "Action": "ecs:DeleteInstance",
+      "Resource": "acs:ecs:cn-hangzhou:*:instance/*",
       "Condition": {
         "StringEquals": {
-          "ecs:InstanceId": "${ecs:instance-id}"
+          "acs:ResourceTag/GIHUB_RUNNER_TYPE": [
+            "aliyun-ecs-spot"
+          ]
         }
       }
     }
@@ -284,13 +284,38 @@ aliyun ecs AuthorizeSecurityGroup \
 }
 ```
 
+**策略说明**：
+
+- **Action**: `ecs:DeleteInstance` - 允许删除 ECS 实例
+- **Resource**: `acs:ecs:${REGION_ID}:*:instance/*` - 指定区域内的所有实例（根据实际区域替换 `${REGION_ID}`）
+- **Condition**: 使用标签条件限制，只允许删除带有 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签的实例
+  - 标签条件提供更细粒度的权限控制
+  - 确保实例角色只能删除标记为 CI Runner 的实例，提高安全性
+
+**实例标签配置**：
+
+在创建 Spot 实例时，会自动添加以下标签：
+
+- **标签 Key**: `GIHUB_RUNNER_TYPE`
+- **标签 Value**: `aliyun-ecs-spot`
+
+此标签用于权限策略的条件匹配，确保实例角色只能删除 CI Runner 实例。
+
 **创建实例角色步骤**：
 
 1. 在阿里云 RAM 控制台创建角色（如 `EcsSelfDestructRole`）
-2. 为角色授予上述权限策略
+2. 为角色授予上述权限策略（使用标签条件）
 3. 创建实例时通过 `--RamRoleName` 参数指定实例角色
+4. 实例创建时会自动添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
 
-详细配置请参考 [实例内部自毁机制](#实例内部自毁机制主要机制) 章节。
+**注意事项**：
+
+- 权限策略中的区域 ID（如 `cn-hangzhou`）需要根据实际使用的区域进行替换
+- 标签 Key `GIHUB_RUNNER_TYPE` 是固定的，不要修改
+- 标签 Value `aliyun-ecs-spot` 是固定的，不要修改
+- 如果使用多个区域，需要为每个区域创建相应的权限策略
+
+详细配置请参考 [自动清理机制](#自动清理机制) 章节。
 
 **资源命名约定**：
 
@@ -358,3 +383,80 @@ build-args: |
 
 1. **实例内部自毁脚本**（主要机制）：Runner 退出后自动删除实例，在 ECS 实例的 User Data 脚本中，配置 Runner 以 Ephemeral 模式运行，并在 Runner 退出后自动调用 Aliyun CLI 删除自身实例。
 2. **工作流清理作业**（兜底机制）：作为最终确认和异常情况处理
+
+### 实例内部自毁机制（主要机制）
+
+#### 工作原理
+
+1. **实例角色配置**：在创建 Spot 实例时，通过 `--RamRoleName` 参数指定实例角色
+2. **标签标记**：实例创建时自动添加标签 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot`
+3. **权限策略**：实例角色被授予删除带有该标签的实例的权限
+4. **自毁脚本**：在 User Data 脚本中安装自毁脚本，通过 Runner 的 post-job hook 或 systemd service 触发
+5. **自动删除**：Runner 退出后，自毁脚本使用实例角色权限自动删除自身实例
+
+#### 实现细节
+
+**自毁脚本位置**：`/usr/local/bin/self-destruct.sh`
+
+**触发机制**：
+
+- **主要方式**：Runner 的 post-job hook（`ACTIONS_RUNNER_HOOK_POST_JOB`）
+- **备用方式**：systemd service（`self-destruct.service`）
+
+**认证方式**：
+
+- 使用实例角色（RamRoleName）获取权限
+- 实例角色通过阿里云元数据服务自动获取，无需配置 Access Key
+
+**权限控制**：
+
+- 权限策略使用标签条件（`acs:ResourceTag/GIHUB_RUNNER_TYPE=aliyun-ecs-spot`）
+- 确保实例角色只能删除标记为 CI Runner 的实例，提高安全性
+
+#### 配置要求
+
+1. **创建 RAM 角色**：在阿里云 RAM 控制台创建角色（如 `EcsSelfDestructRole`）
+2. **授予权限策略**：为角色授予删除实例的权限（使用标签条件）
+3. **配置变量**：在 GitHub Variables 中配置 `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`
+4. **实例标签**：实例创建时自动添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
+
+#### 权限策略示例
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ecs:DeleteInstance",
+      "Resource": "acs:ecs:cn-hangzhou:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/GIHUB_RUNNER_TYPE": [
+            "aliyun-ecs-spot"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**策略说明**：
+
+- **Action**: `ecs:DeleteInstance` - 允许删除 ECS 实例
+- **Resource**: `acs:ecs:${REGION_ID}:*:instance/*` - 指定区域内的所有实例（根据实际区域替换 `${REGION_ID}`）
+- **Condition**: 使用标签条件限制，只允许删除带有 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签的实例
+
+**实例标签**：
+
+- **标签 Key**: `GIHUB_RUNNER_TYPE`（固定值，不要修改）
+- **标签 Value**: `aliyun-ecs-spot`（固定值，不要修改）
+- 标签在创建实例时自动添加，用于权限策略的条件匹配
+
+#### 优势
+
+1. **安全性**：使用标签条件限制权限，只能删除标记为 CI Runner 的实例
+2. **自动化**：无需手动干预，Runner 退出后自动删除实例
+3. **可靠性**：双重触发机制（post-job hook + systemd service）确保自毁脚本执行
+4. **成本控制**：避免实例长时间运行产生费用

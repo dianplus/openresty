@@ -25,6 +25,7 @@ ALIYUN_SECURITY_GROUP_ID="${ALIYUN_SECURITY_GROUP_ID:-}"
 ALIYUN_IMAGE_ID="${ALIYUN_IMAGE_ID:-}"
 ALIYUN_VSWITCH_ID="${ALIYUN_VSWITCH_ID:-}"
 ALIYUN_KEY_PAIR_NAME="${ALIYUN_KEY_PAIR_NAME:-}"
+ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME="${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-}"
 INSTANCE_NAME="${INSTANCE_NAME:-}"
 USER_DATA="${USER_DATA:-}"
@@ -126,11 +127,18 @@ CMD="aliyun ecs RunInstances \
   --InstanceChargeType PostPaid \
   --SpotStrategy SpotAsPriceGo \
   --SystemDisk.Category cloud_essd \
-  --SecurityEnhancementStrategy Deactive"
+  --SecurityEnhancementStrategy Deactive \
+  --Tag.1.Key GIHUB_RUNNER_TYPE \
+  --Tag.1.Value aliyun-ecs-spot"
 
 # 添加 SSH 密钥对（如果提供）
 if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
   CMD="${CMD} --KeyPairName ${ALIYUN_KEY_PAIR_NAME}"
+fi
+
+# 添加实例角色（如果提供，用于实例自毁）
+if [[ -n "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" ]]; then
+  CMD="${CMD} --RamRoleName ${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}"
 fi
 
 # 添加 User Data（如果提供）

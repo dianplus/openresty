@@ -26,6 +26,10 @@ HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
 NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1,100.100.100.200,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,mirrors.tuna.tsinghua.edu.cn,mirrors.aliyun.com,.aliyun.com,.aliyuncs.com,.alicdn.com,.dianplus.cn,.dianjia.io,.taobao.com}"
 
+# 实例自毁配置（必需）
+# 使用实例角色（ECS Self-Destruct Role Name）获取权限进行实例自毁
+ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME="${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}"
+
 # 验证必需参数
 if [[ -z "${RUNNER_REGISTRATION_TOKEN}" ]]; then
   echo "Error: RUNNER_REGISTRATION_TOKEN is required" >&2
@@ -163,6 +167,135 @@ chmod 600 "${RUNNER_DIR}/.env" || true
 # 启动 Runner 服务
 echo "=== Starting Runner service ==="
 ./svc.sh start
+
+# 设置实例自毁机制
+echo "=== Setting up instance self-destruct mechanism ==="
+SELF_DESTRUCT_SCRIPT="/usr/local/bin/self-destruct.sh"
+
+# 创建自毁脚本
+cat > "${SELF_DESTRUCT_SCRIPT}" << 'SELF_DESTRUCT_EOF'
+#!/bin/bash
+
+# 实例自毁脚本
+# 在 Runner 退出后自动删除 ECS 实例
+# 使用实例角色（RamRoleName）获取权限进行认证
+
+set -euo pipefail
+
+# 日志文件
+LOG_FILE="/var/log/self-destruct.log"
+
+# 记录日志函数
+log() {
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "${LOG_FILE}"
+}
+
+log "=== Instance Self-Destruct Script Started ==="
+
+# 获取实例 ID（通过阿里云元数据服务）
+METADATA_URL="http://100.100.100.200/latest/meta-data"
+INSTANCE_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/instance-id" || echo "")
+REGION_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/region-id" || echo "")
+
+if [[ -z "${INSTANCE_ID}" ]]; then
+    log "Error: Failed to get instance ID from metadata service"
+    exit 1
+fi
+
+if [[ -z "${REGION_ID}" ]]; then
+    log "Error: Failed to get region ID from metadata service"
+    exit 1
+fi
+
+log "Instance ID: ${INSTANCE_ID}"
+log "Region ID: ${REGION_ID}"
+
+# 配置 Aliyun CLI
+# 使用实例角色进行认证（实例角色会自动通过元数据服务获取，无需配置）
+log "Using instance role for authentication"
+# 如果实例配置了 RamRoleName，Aliyun CLI 会自动使用实例角色
+
+# 检查 Aliyun CLI 是否已安装
+if ! command -v aliyun &> /dev/null; then
+    log "Error: Aliyun CLI is not installed"
+    exit 1
+fi
+
+# 等待一段时间，确保 Runner 完全退出
+log "Waiting 10 seconds before self-destruct..."
+sleep 10
+
+# 删除实例
+log "Deleting instance: ${INSTANCE_ID}"
+RESPONSE=$(aliyun ecs DeleteInstance \
+    --RegionId "${REGION_ID}" \
+    --InstanceId "${INSTANCE_ID}" \
+    --Force true 2>&1)
+
+EXIT_CODE=$?
+
+if [[ ${EXIT_CODE} -ne 0 ]]; then
+    log "Error: Failed to delete instance (exit code: ${EXIT_CODE})"
+    log "Response: ${RESPONSE}"
+    exit ${EXIT_CODE}
+fi
+
+log "Instance deleted successfully: ${INSTANCE_ID}"
+log "=== Instance Self-Destruct Script Completed ==="
+SELF_DESTRUCT_EOF
+
+chmod +x "${SELF_DESTRUCT_SCRIPT}"
+
+# 验证实例角色配置
+if [[ -z "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}" ]]; then
+    echo "Warning: ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME is not configured, self-destruct mechanism may not work"
+    echo "Please configure ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME in GitHub Variables"
+else
+    echo "Using instance role (${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}) for self-destruct mechanism"
+fi
+
+# 创建 systemd service，在 Runner 服务停止后执行自毁脚本
+echo "=== Creating self-destruct systemd service ==="
+# 使用 Runner 的 post-job hook 更可靠
+# 创建 post-job hook 脚本
+cat > "${RUNNER_DIR}/post-job-hook.sh" << 'HOOK_EOF'
+#!/bin/bash
+# Runner post-job hook
+# 在 Job 完成后执行实例自毁
+/usr/local/bin/self-destruct.sh
+HOOK_EOF
+
+chmod +x "${RUNNER_DIR}/post-job-hook.sh"
+
+# 配置 Runner 使用 post-job hook
+# 通过环境变量配置 post-job hook
+echo "export ACTIONS_RUNNER_HOOK_POST_JOB=\"${RUNNER_DIR}/post-job-hook.sh\"" >> "${RUNNER_DIR}/.env"
+
+# 同时创建 systemd service 作为备用机制
+cat > /etc/systemd/system/self-destruct.service << 'SERVICE_EOF'
+[Unit]
+Description=Instance Self-Destruct Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'while systemctl is-active --quiet actions.runner.*.service 2>/dev/null; do sleep 5; done; /usr/local/bin/self-destruct.sh'
+StandardOutput=journal
+StandardError=journal
+EnvironmentFile=/etc/environment
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# 启用服务（但不立即启动，等待 Runner 服务停止）
+systemctl daemon-reload
+systemctl enable self-destruct.service
+
+echo "Self-destruct service created and enabled"
+echo "Post-job hook configured at ${RUNNER_DIR}/post-job-hook.sh"
+echo "Instance will be automatically deleted when Runner service stops or job completes"
 
 echo "=== User Data Script Completed ==="
 echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
