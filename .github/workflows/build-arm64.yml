@@ -1,4 +1,4 @@
-name: Build AMD64
+name: Build ARM64
 
 on:
   # 暂时注释掉 push 触发，避免在测试后续迭代时触发无效构建
@@ -13,7 +13,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dianplus/openresty
-  ARCH: amd64
+  ARCH: arm64
   DOCKER_HUB_MIRROR: ${{ vars.DOCKER_HUB_MIRROR }}
 
 jobs:
@@ -68,7 +68,7 @@ jobs:
           RUNNER_REGISTRATION_TOKEN: ${{ steps.get-token.outputs.result }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
-          RUNNER_LABELS: self-hosted,Linux,x64
+          RUNNER_LABELS: self-hosted,Linux,arm64
           HTTP_PROXY: ${{ vars.HTTP_PROXY }}
           HTTPS_PROXY: ${{ vars.HTTPS_PROXY }}
           NO_PROXY: ${{ vars.NO_PROXY }}
@@ -86,10 +86,10 @@ jobs:
           ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
           ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
           ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
-          ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
-          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_ARM64_IMAGE_ID }}
+          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
-          INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE_AMD64 }}
+          INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE_ARM64 }}
           INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
           ARCH: ${{ env.ARCH }}
         run: |
@@ -160,7 +160,7 @@ jobs:
   build:
     name: Build and Push
     needs: setup
-    runs-on: [self-hosted, Linux, x64]
+    runs-on: [self-hosted, Linux, arm64]
     if: needs.setup.outputs.runner_online == 'true'
     env:
       HTTP_PROXY: ${{ vars.HTTP_PROXY }}
@@ -207,9 +207,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest-amd64,enable={{is_default_branch}}
-            type=semver,pattern={{version}}-amd64
-            type=ref,event=branch,suffix=-amd64
+            type=raw,value=latest-arm64,enable={{is_default_branch}}
+            type=semver,pattern={{version}}-arm64
+            type=ref,event=branch,suffix=-arm64
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -232,3 +232,4 @@ jobs:
             no_proxy=${{ env.NO_PROXY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
