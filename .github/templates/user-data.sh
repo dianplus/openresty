@@ -127,6 +127,11 @@ curl -o runner.tar.gz -L \
 tar xzf runner.tar.gz
 rm runner.tar.gz
 
+echo "=== Installing runner dependencies ==="
+# 安装 GitHub Actions Runner 依赖（.NET 运行时依赖等）
+# 注意：脚本会自动根据系统选择 apt/yum 安装 libicu 等依赖
+./bin/installdependencies.sh
+
 # 配置 Runner（Ephemeral 模式）
 echo "=== Configuring Runner ==="
 # 允许以 root 身份运行 runner 配置
