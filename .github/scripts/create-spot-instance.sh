@@ -115,6 +115,7 @@ if ! aliyun configure get &> /dev/null; then
 fi
 
 # 构建 RunInstances 命令
+# 注意：不创建公网IP，实例仅在内网访问
 CMD="aliyun ecs RunInstances \
   --RegionId ${ALIYUN_REGION_ID} \
   --ImageId ${ALIYUN_IMAGE_ID} \
@@ -124,8 +125,6 @@ CMD="aliyun ecs RunInstances \
   --InstanceName ${INSTANCE_NAME} \
   --InstanceChargeType PostPaid \
   --SpotStrategy SpotAsPriceGo \
-  --InternetChargeType PayByTraffic \
-  --InternetMaxBandwidthOut 10 \
   --SystemDisk.Category cloud_essd"
 
 # 添加 SSH 密钥对（如果提供）
