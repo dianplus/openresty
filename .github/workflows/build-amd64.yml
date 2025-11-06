@@ -13,10 +13,118 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dianplus/openresty
+  ARCH: amd64
 
 jobs:
-  build:
+  setup:
+    name: Setup Spot Instance
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      instance_id: ${{ steps.create-instance.outputs.instance_id }}
+      runner_name: ${{ steps.create-instance.outputs.runner_name }}
+      runner_online: ${{ steps.wait-runner.outputs.runner_online }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Configure Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: '3.0.181'
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID }}
+
+      - name: Get Runner Registration Token
+        id: get-token
+        uses: actions/github-script@v7
+        with:
+          # 使用专用的 PAT token 获取 Runner Registration Token
+          # GITHUB_TOKEN 无法获得 administration 权限，必须使用 PAT token
+          github-token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          script: |
+            const response = await github.rest.actions.createRegistrationTokenForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            return response.data.token;
+          result-encoding: string
+
+      - name: Generate Runner Name
+        id: runner-name
+        run: |
+          TIMESTAMP=$(date +%s)
+          RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}"
+          echo "name=${RUNNER_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Generate User Data
+        id: user-data
+        env:
+          RUNNER_REGISTRATION_TOKEN: ${{ steps.get-token.outputs.result }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+          RUNNER_LABELS: self-hosted,Linux,x64
+          HTTP_PROXY: ${{ vars.HTTP_PROXY }}
+          HTTPS_PROXY: ${{ vars.HTTPS_PROXY }}
+          NO_PROXY: ${{ vars.NO_PROXY }}
+        run: |
+          USER_DATA=$(bash .github/scripts/generate-user-data.sh)
+          echo "user_data<<EOF" >> $GITHUB_OUTPUT
+          echo "${USER_DATA}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Spot Instance
+        id: create-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
+          ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
+          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE }}
+          INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
+          USER_DATA: ${{ steps.user-data.outputs.user_data }}
+          ARCH: ${{ env.ARCH }}
+        run: |
+          INSTANCE_ID=$(bash .github/scripts/create-spot-instance.sh)
+          echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
+          echo "runner_name=${{ steps.runner-name.outputs.name }}" >> $GITHUB_OUTPUT
+
+      - name: Wait for Runner Online
+        id: wait-runner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+          TIMEOUT: 300
+          INTERVAL: 10
+        run: |
+          bash .github/scripts/wait-for-runner.sh
+
+      - name: Cleanup on Failure
+        if: failure()
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          INSTANCE_ID: ${{ steps.create-instance.outputs.instance_id }}
+        run: |
+          if [[ -n "${INSTANCE_ID}" ]]; then
+            bash .github/scripts/cleanup-instance.sh
+          fi
+
+  build:
+    name: Build and Push
+    needs: setup
+    runs-on: [self-hosted, Linux, x64]
+    if: needs.setup.outputs.runner_online == 'true'
     permissions:
       contents: read
       packages: write
@@ -25,8 +133,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v3
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -56,4 +164,3 @@ jobs:
             RESTY_J=8
           cache-from: type=gha
           cache-to: type=gha,mode=max
-

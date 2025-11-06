@@ -74,7 +74,9 @@ while [[ ${ATTEMPT} -lt ${MAX_ATTEMPTS} ]]; do
     # 检查 Runner 是否在线
     if [[ "${RUNNER_STATUS}" == "online" ]]; then
       echo "Runner is online!"
-      echo "runner_online=true" >> ${GITHUB_OUTPUT:-/dev/stdout}
+      if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+        echo "runner_online=true" >> "${GITHUB_OUTPUT}"
+      fi
       exit 0
     else
       echo "Runner is registered but not online yet (status: ${RUNNER_STATUS})"
@@ -91,6 +93,8 @@ done
 
 # 超时未找到 Runner
 echo "Error: Runner did not come online within ${TIMEOUT} seconds" >&2
-echo "runner_online=false" >> ${GITHUB_OUTPUT:-/dev/stdout}
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "runner_online=false" >> "${GITHUB_OUTPUT}"
+fi
 exit 1
 
