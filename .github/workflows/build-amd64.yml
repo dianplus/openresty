@@ -92,8 +92,10 @@ jobs:
           INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
           ARCH: ${{ env.ARCH }}
         run: |
-          # 将 User Data 写入临时文件，避免环境变量传递多行脚本的问题
-          echo "${{ steps.user-data.outputs.user_data }}" > /tmp/user-data.sh
+          # 将 User Data 写入临时文件，使用单引号 heredoc，避免 bash 展开其中的 ${VAR}
+          cat > /tmp/user-data.sh <<'EOF'
+          ${{ steps.user-data.outputs.user_data }}
+          EOF
           echo "User Data file created, size: $(wc -c < /tmp/user-data.sh) bytes"
           export USER_DATA_FILE=/tmp/user-data.sh
           set -x  # 启用调试模式
