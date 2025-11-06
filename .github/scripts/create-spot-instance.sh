@@ -103,7 +103,7 @@ export ALIBABA_CLOUD_ACCESS_KEY_ID="${ALIYUN_ACCESS_KEY_ID}"
 export ALIBABA_CLOUD_ACCESS_KEY_SECRET="${ALIYUN_ACCESS_KEY_SECRET}"
 
 # 验证 Aliyun CLI 配置
-echo "Verifying Aliyun CLI configuration..."
+echo "Verifying Aliyun CLI configuration..." >&2
 if ! aliyun configure get &> /dev/null; then
   echo "Warning: Aliyun CLI configuration check failed, but continuing..." >&2
 fi
@@ -132,50 +132,64 @@ if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
   # 从文件读取 User Data
   USER_DATA=$(cat "${USER_DATA_FILE}")
   USER_DATA_SIZE=$(wc -c < "${USER_DATA_FILE}")
-  echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes)"
+  echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes)" >&2
 elif [[ -n "${USER_DATA}" ]]; then
   # 从环境变量读取 User Data（向后兼容）
   USER_DATA_SIZE=${#USER_DATA}
-  echo "Using User Data from environment variable (${USER_DATA_SIZE} bytes)"
+  echo "Using User Data from environment variable (${USER_DATA_SIZE} bytes)" >&2
 else
   USER_DATA=""
-  echo "No User Data provided"
+  echo "No User Data provided" >&2
 fi
 
 if [[ -n "${USER_DATA}" ]]; then
   # 将 User Data 编码为 base64（阿里云要求）
-  echo "Encoding User Data to base64..."
+  echo "Encoding User Data to base64..." >&2
   USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
   if [[ -z "${USER_DATA_B64}" ]]; then
     echo "Error: Failed to encode User Data to base64" >&2
     exit 1
   fi
-  echo "User Data encoded successfully (${#USER_DATA_B64} bytes)"
+  echo "User Data encoded successfully (${#USER_DATA_B64} bytes)" >&2
   CMD="${CMD} --UserData ${USER_DATA_B64}"
 fi
 
 # 执行创建实例命令
-echo "=== Creating Spot Instance ==="
-echo "Instance Name: ${INSTANCE_NAME}"
-echo "Instance Type: ${INSTANCE_TYPE}"
-echo "Region: ${ALIYUN_REGION_ID}"
-echo "Architecture: ${ARCH}"
-echo "VPC ID: ${ALIYUN_VPC_ID}"
-echo "VSwitch ID: ${ALIYUN_VSWITCH_ID}"
-echo "Security Group ID: ${ALIYUN_SECURITY_GROUP_ID}"
-echo "Image ID: ${ALIYUN_IMAGE_ID}"
+echo "=== Creating Spot Instance ===" >&2
+echo "Instance Name: ${INSTANCE_NAME}" >&2
+echo "Instance Type: ${INSTANCE_TYPE}" >&2
+echo "Region: ${ALIYUN_REGION_ID}" >&2
+echo "Architecture: ${ARCH}" >&2
+echo "VPC ID: ${ALIYUN_VPC_ID}" >&2
+echo "VSwitch ID: ${ALIYUN_VSWITCH_ID}" >&2
+echo "Security Group ID: ${ALIYUN_SECURITY_GROUP_ID}" >&2
+echo "Image ID: ${ALIYUN_IMAGE_ID}" >&2
 if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
-  echo "Key Pair Name: ${ALIYUN_KEY_PAIR_NAME}"
+  echo "Key Pair Name: ${ALIYUN_KEY_PAIR_NAME}" >&2
 fi
 
+# 构建命令字符串（不包含 UserData，因为可能很长）
+CMD_DISPLAY="${CMD}"
+if [[ "${CMD_DISPLAY}" == *"--UserData"* ]]; then
+  # 截断 UserData 部分用于显示
+  CMD_DISPLAY=$(echo "${CMD_DISPLAY}" | sed 's/--UserData [^ ]*/--UserData <base64-encoded-data>/')
+fi
+echo "Executing command: ${CMD_DISPLAY}" >&2
+
 # 执行命令并捕获输出和错误
+# 注意：使用 eval 执行命令，确保所有参数正确传递
 RESPONSE=$(eval "${CMD}" 2>&1)
 EXIT_CODE=$?
 
+# 输出响应（用于调试）
+echo "Command exit code: ${EXIT_CODE}" >&2
+echo "Command response:" >&2
+echo "${RESPONSE}" >&2
+
 if [[ ${EXIT_CODE} -ne 0 ]]; then
   echo "Error: Failed to create Spot instance (exit code: ${EXIT_CODE})" >&2
-  echo "Command: ${CMD}" >&2
-  echo "Response: ${RESPONSE}" >&2
+  echo "Full command: ${CMD_DISPLAY}" >&2
+  echo "Full response: ${RESPONSE}" >&2
   exit ${EXIT_CODE}
 fi
 
