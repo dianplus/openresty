@@ -129,6 +129,8 @@ rm runner.tar.gz
 
 # 配置 Runner（Ephemeral 模式）
 echo "=== Configuring Runner ==="
+# 允许以 root 身份运行 runner 配置
+export RUNNER_ALLOW_RUNASROOT=1
 ./config.sh \
   --url "https://github.com/${GITHUB_REPOSITORY}" \
   --token "${RUNNER_REGISTRATION_TOKEN}" \
