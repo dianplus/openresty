@@ -125,7 +125,8 @@ CMD="aliyun ecs RunInstances \
   --InstanceChargeType PostPaid \
   --SpotStrategy SpotAsPriceGo \
   --InternetChargeType PayByTraffic \
-  --InternetMaxBandwidthOut 10"
+  --InternetMaxBandwidthOut 10 \
+  --SystemDisk.Category cloud_essd"
 
 # 添加 SSH 密钥对（如果提供）
 if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
