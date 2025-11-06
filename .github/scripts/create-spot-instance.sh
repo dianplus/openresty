@@ -17,6 +17,7 @@ ALIYUN_KEY_PAIR_NAME="${ALIYUN_KEY_PAIR_NAME:-}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-}"
 INSTANCE_NAME="${INSTANCE_NAME:-}"
 USER_DATA="${USER_DATA:-}"
+USER_DATA_FILE="${USER_DATA_FILE:-}"
 ARCH="${ARCH:-amd64}"  # amd64 或 arm64
 
 # 根据架构设置默认实例类型（如果未指定）
@@ -108,6 +109,18 @@ if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
 fi
 
 # 添加 User Data（如果提供）
+# 优先使用文件方式，避免环境变量传递多行脚本的问题
+if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
+  # 从文件读取 User Data
+  USER_DATA=$(cat "${USER_DATA_FILE}")
+  echo "Using User Data from file: ${USER_DATA_FILE}"
+elif [[ -n "${USER_DATA}" ]]; then
+  # 从环境变量读取 User Data（向后兼容）
+  echo "Using User Data from environment variable"
+else
+  USER_DATA=""
+fi
+
 if [[ -n "${USER_DATA}" ]]; then
   # 将 User Data 编码为 base64（阿里云要求）
   USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
