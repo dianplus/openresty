@@ -184,13 +184,21 @@ echo "Executing command: ${CMD_DISPLAY}" >&2
 
 # 执行命令并捕获输出和错误
 # 注意：使用 eval 执行命令，确保所有参数正确传递
+echo "About to execute Aliyun CLI command..." >&2
+set +e  # 临时禁用 exit on error，以便捕获错误
 RESPONSE=$(eval "${CMD}" 2>&1)
 EXIT_CODE=$?
+set -e  # 重新启用 exit on error
 
 # 输出响应（用于调试）
 echo "Command exit code: ${EXIT_CODE}" >&2
-echo "Command response:" >&2
-echo "${RESPONSE}" >&2
+echo "Command response length: ${#RESPONSE} characters" >&2
+if [[ -n "${RESPONSE}" ]]; then
+  echo "Command response:" >&2
+  echo "${RESPONSE}" >&2
+else
+  echo "Command response is empty" >&2
+fi
 
 if [[ ${EXIT_CODE} -ne 0 ]]; then
   echo "Error: Failed to create Spot instance (exit code: ${EXIT_CODE})" >&2

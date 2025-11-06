@@ -34,7 +34,7 @@ jobs:
       - name: Install and Configure Aliyun CLI
         uses: Liar0320/aliyun-cli-action@v1.0.2
         with:
-          version: '3.0.181'
+          version: '3.1.2'
           access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
           region: ${{ vars.ALIYUN_REGION_ID }}
