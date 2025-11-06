@@ -125,7 +125,8 @@ CMD="aliyun ecs RunInstances \
   --InstanceName ${INSTANCE_NAME} \
   --InstanceChargeType PostPaid \
   --SpotStrategy SpotAsPriceGo \
-  --SystemDisk.Category cloud_essd"
+  --SystemDisk.Category cloud_essd \
+  --SecurityEnhancementStrategy Deactive"
 
 # 添加 SSH 密钥对（如果提供）
 if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
