@@ -198,13 +198,6 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v5
-        env:
-          HTTP_PROXY: ${{ env.HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.HTTPS_PROXY }}
-          NO_PROXY: ${{ env.NO_PROXY }}
-          http_proxy: ${{ env.HTTP_PROXY }}
-          https_proxy: ${{ env.HTTPS_PROXY }}
-          no_proxy: ${{ env.NO_PROXY }}
         with:
           context: .
           push: true
