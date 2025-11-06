@@ -94,8 +94,13 @@ jobs:
         run: |
           # 将 User Data 写入临时文件，避免环境变量传递多行脚本的问题
           echo "${{ steps.user-data.outputs.user_data }}" > /tmp/user-data.sh
+          echo "User Data file created, size: $(wc -c < /tmp/user-data.sh) bytes"
           export USER_DATA_FILE=/tmp/user-data.sh
-          INSTANCE_ID=$(bash .github/scripts/create-spot-instance.sh)
+          set -x  # 启用调试模式
+          INSTANCE_ID=$(bash .github/scripts/create-spot-instance.sh 2>&1) || {
+            echo "Error: Failed to create instance" >&2
+            exit 1
+          }
           echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
           echo "runner_name=${{ steps.runner-name.outputs.name }}" >> $GITHUB_OUTPUT
 

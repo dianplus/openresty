@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# 启用调试模式（如果设置了 DEBUG 环境变量）
+if [[ "${DEBUG:-}" == "true" ]]; then
+  set -x
+fi
+
 # 从环境变量获取参数
 ALIYUN_ACCESS_KEY_ID="${ALIYUN_ACCESS_KEY_ID:-}"
 ALIYUN_ACCESS_KEY_SECRET="${ALIYUN_ACCESS_KEY_SECRET:-}"
@@ -86,9 +91,22 @@ if [[ -z "${INSTANCE_NAME}" ]]; then
   exit 1
 fi
 
+# 检查 Aliyun CLI 是否已安装
+if ! command -v aliyun &> /dev/null; then
+  echo "Error: Aliyun CLI is not installed or not in PATH" >&2
+  echo "Please ensure aliyun-cli-setup-action is used in the workflow" >&2
+  exit 1
+fi
+
 # 配置 Aliyun CLI
 export ALIBABA_CLOUD_ACCESS_KEY_ID="${ALIYUN_ACCESS_KEY_ID}"
 export ALIBABA_CLOUD_ACCESS_KEY_SECRET="${ALIYUN_ACCESS_KEY_SECRET}"
+
+# 验证 Aliyun CLI 配置
+echo "Verifying Aliyun CLI configuration..."
+if ! aliyun configure get &> /dev/null; then
+  echo "Warning: Aliyun CLI configuration check failed, but continuing..." >&2
+fi
 
 # 构建 RunInstances 命令
 CMD="aliyun ecs RunInstances \
@@ -113,17 +131,26 @@ fi
 if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
   # 从文件读取 User Data
   USER_DATA=$(cat "${USER_DATA_FILE}")
-  echo "Using User Data from file: ${USER_DATA_FILE}"
+  USER_DATA_SIZE=$(wc -c < "${USER_DATA_FILE}")
+  echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes)"
 elif [[ -n "${USER_DATA}" ]]; then
   # 从环境变量读取 User Data（向后兼容）
-  echo "Using User Data from environment variable"
+  USER_DATA_SIZE=${#USER_DATA}
+  echo "Using User Data from environment variable (${USER_DATA_SIZE} bytes)"
 else
   USER_DATA=""
+  echo "No User Data provided"
 fi
 
 if [[ -n "${USER_DATA}" ]]; then
   # 将 User Data 编码为 base64（阿里云要求）
+  echo "Encoding User Data to base64..."
   USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+  if [[ -z "${USER_DATA_B64}" ]]; then
+    echo "Error: Failed to encode User Data to base64" >&2
+    exit 1
+  fi
+  echo "User Data encoded successfully (${#USER_DATA_B64} bytes)"
   CMD="${CMD} --UserData ${USER_DATA_B64}"
 fi
 
