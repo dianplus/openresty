@@ -86,7 +86,7 @@ jobs:
           ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
           ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
-          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_K }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
           INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE }}
           INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
