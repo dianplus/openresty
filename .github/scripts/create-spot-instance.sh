@@ -10,6 +10,12 @@ if [[ "${DEBUG:-}" == "true" ]]; then
   set -x
 fi
 
+# 错误处理函数
+error_exit() {
+  echo "Error: $1" >&2
+  exit 1
+}
+
 # 从环境变量获取参数
 ALIYUN_ACCESS_KEY_ID="${ALIYUN_ACCESS_KEY_ID:-}"
 ALIYUN_ACCESS_KEY_SECRET="${ALIYUN_ACCESS_KEY_SECRET:-}"

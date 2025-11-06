@@ -99,20 +99,32 @@ jobs:
           set -x  # 启用调试模式
           # 执行脚本并捕获输出，将标准输出和标准错误分离
           # 脚本应该只输出实例 ID 到标准输出，其他信息输出到标准错误
-          # 使用临时文件捕获所有输出
-          bash .github/scripts/create-spot-instance.sh > /tmp/instance-id.txt 2> /tmp/aliyun-error.log
+          # 使用临时文件捕获所有输出，同时显示标准错误以便调试
+          bash .github/scripts/create-spot-instance.sh > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
+            EXIT_CODE=$?
+            echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
+            exit ${EXIT_CODE}
+          }
           EXIT_CODE=$?
           if [[ ${EXIT_CODE} -ne 0 ]]; then
-            echo "Error: Failed to create instance (exit code: ${EXIT_CODE})" >&2
-            echo "Error output:" >&2
-            cat /tmp/aliyun-error.log >&2
+            echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
             exit ${EXIT_CODE}
           fi
           INSTANCE_ID=$(cat /tmp/instance-id.txt | tail -1)
           if [[ -z "${INSTANCE_ID}" ]]; then
-            echo "Error: Failed to extract instance ID" >&2
-            echo "Output:" >&2
-            cat /tmp/instance-id.txt >&2
+            echo "Error: Failed to extract instance ID"
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
             exit 1
           fi
           echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
