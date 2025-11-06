@@ -115,28 +115,51 @@ if [[ -n "${USER_DATA}" ]]; then
 fi
 
 # 执行创建实例命令
-echo "Creating Spot instance: ${INSTANCE_NAME}"
+echo "=== Creating Spot Instance ==="
+echo "Instance Name: ${INSTANCE_NAME}"
 echo "Instance Type: ${INSTANCE_TYPE}"
 echo "Region: ${ALIYUN_REGION_ID}"
 echo "Architecture: ${ARCH}"
+echo "VPC ID: ${ALIYUN_VPC_ID}"
+echo "VSwitch ID: ${ALIYUN_VSWITCH_ID}"
+echo "Security Group ID: ${ALIYUN_SECURITY_GROUP_ID}"
+echo "Image ID: ${ALIYUN_IMAGE_ID}"
+if [[ -n "${ALIYUN_KEY_PAIR_NAME}" ]]; then
+  echo "Key Pair Name: ${ALIYUN_KEY_PAIR_NAME}"
+fi
 
+# 执行命令并捕获输出和错误
 RESPONSE=$(eval "${CMD}" 2>&1)
 EXIT_CODE=$?
 
 if [[ ${EXIT_CODE} -ne 0 ]]; then
-  echo "Error: Failed to create instance" >&2
+  echo "Error: Failed to create Spot instance (exit code: ${EXIT_CODE})" >&2
+  echo "Command: ${CMD}" >&2
   echo "Response: ${RESPONSE}" >&2
   exit ${EXIT_CODE}
 fi
 
-# 提取实例 ID
-INSTANCE_ID=$(echo "${RESPONSE}" | grep -o '"InstanceId":"[^"]*' | cut -d'"' -f4 || echo "")
+# 检查响应是否为空
+if [[ -z "${RESPONSE}" ]]; then
+  echo "Error: Empty response from Aliyun CLI" >&2
+  exit 1
+fi
 
-if [[ -z "${INSTANCE_ID}" ]]; then
+# 尝试使用 jq 提取实例 ID（如果可用）
+if command -v jq &> /dev/null; then
+  INSTANCE_ID=$(echo "${RESPONSE}" | jq -r '.InstanceIdSets.InstanceIdSet[0]' 2>/dev/null || echo "")
+else
+  # 如果没有 jq，使用 grep 和 cut
+  INSTANCE_ID=$(echo "${RESPONSE}" | grep -o '"InstanceId":"[^"]*' | cut -d'"' -f4 || echo "")
+fi
+
+if [[ -z "${INSTANCE_ID}" || "${INSTANCE_ID}" == "null" ]]; then
   echo "Error: Failed to extract instance ID from response" >&2
   echo "Response: ${RESPONSE}" >&2
   exit 1
 fi
+
+echo "Spot instance created successfully: ${INSTANCE_ID}"
 
 # 输出实例 ID（用于后续步骤）
 echo "${INSTANCE_ID}"
