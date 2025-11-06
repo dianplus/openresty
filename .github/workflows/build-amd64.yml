@@ -14,6 +14,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dianplus/openresty
   ARCH: amd64
+  DOCKER_HUB_MIRROR: ${{ vars.DOCKER_HUB_MIRROR || 'registry-us-dmit-d.livedig.com' }}
 
 jobs:
   setup:
@@ -178,6 +179,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["${{ env.DOCKER_HUB_MIRROR }}"]
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
