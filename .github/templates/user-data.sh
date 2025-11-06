@@ -147,6 +147,17 @@ export RUNNER_ALLOW_RUNASROOT=1
 
 # 安装 Runner 服务（使用 root 用户）
 echo "=== Installing Runner service ==="
+echo "Writing runner environment file: ${RUNNER_DIR}/.env"
+{
+  echo "HTTP_PROXY=${HTTP_PROXY}"
+  echo "HTTPS_PROXY=${HTTPS_PROXY}"
+  echo "NO_PROXY=${NO_PROXY}"
+  # Lowercase variants for tools that rely on them under systemd service
+  echo "http_proxy=${HTTP_PROXY}"
+  echo "https_proxy=${HTTPS_PROXY}"
+  echo "no_proxy=${NO_PROXY}"
+} > "${RUNNER_DIR}/.env"
+chmod 600 "${RUNNER_DIR}/.env" || true
 ./svc.sh install root
 
 # 启动 Runner 服务
