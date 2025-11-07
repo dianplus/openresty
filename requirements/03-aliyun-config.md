@@ -144,7 +144,7 @@ aliyun ecs AuthorizeSecurityGroup \
 
 #### 阿里云 RAM 权限策略
 
-##### 最小权限策略（推荐）
+##### RAM 用户的推荐权限策略
 
 ```json
 {
@@ -155,37 +155,35 @@ aliyun ecs AuthorizeSecurityGroup \
       "Action": [
         "ecs:RunInstances",
         "ecs:DescribeInstances",
-        "ecs:DeleteInstance"
+        "ecs:DescribeImages",
+        "ecs:DescribeSecurityGroups",
+        "ecs:DescribeAvailableResource",
+        "ecs:DescribeSpotPriceHistory"
       ],
-      "Resource": [
-        "acs:ecs:${REGION_ID}:*:instance/ci-runner-*-spot-*",
-        "acs:ecs:${REGION_ID}:*:image/*",
-        "acs:ecs:${REGION_ID}:*:securitygroup/sg-*",
-        "acs:ecs:${REGION_ID}:*:vswitch/vsw-*"
-      ],
-      "Condition": {
-        "StringLike": {
-          "ecs:InstanceName": "ci-runner-*-spot-*"
-        }
-      }
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
       "Action": [
-        "ecs:DescribeImages",
-        "ecs:DescribeSecurityGroups",
-        "ecs:DescribeVSwitches",
-        "ecs:DescribeVpcs",
-        "ecs:DescribeAvailableResource",
-        "ecs:DescribeSpotPriceHistory"
+        "vpc:DescribeVSwitches",
+        "vpc:DescribeVpcs"
       ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ram:PassRole",
       "Resource": "*"
     }
   ]
 }
 ```
 
-##### 区域隔离策略
+##### ECS实例角色推荐的策略
+
+角色赋予给创建的 Runner Spot Instance，用于自毁。
+
+角色的授权策略：
 
 ```json
 {
@@ -194,84 +192,10 @@ aliyun ecs AuthorizeSecurityGroup \
     {
       "Effect": "Allow",
       "Action": [
-        "ecs:RunInstances",
-        "ecs:DescribeInstances",
-        "ecs:DeleteInstance"
+        "ecs:DeleteInstance",
+        "ecs:DeleteInstances"
       ],
-      "Resource": [
-        "acs:ecs:${REGION_ID}:*:instance/ci-runner-*-spot-*",
-        "acs:ecs:${REGION_ID}:*:image/*",
-        "acs:ecs:${REGION_ID}:*:securitygroup/sg-*",
-        "acs:ecs:${REGION_ID}:*:vswitch/vsw-*"
-      ],
-      "Condition": {
-        "StringEquals": {
-          "ecs:RegionId": "${REGION_ID}"
-        },
-        "StringLike": {
-          "ecs:InstanceName": "ci-runner-*-spot-*"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecs:DescribeImages",
-        "ecs:DescribeSecurityGroups",
-        "ecs:DescribeVSwitches",
-        "ecs:DescribeVpcs",
-        "ecs:DescribeAvailableResource",
-        "ecs:DescribeSpotPriceHistory"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "ecs:RegionId": "${REGION_ID}"
-        }
-      }
-    }
-  ]
-}
-```
-
-#### GitHub 权限
-
-- `contents: read` - 读取仓库内容
-- `packages: write` - 推送镜像
-- `actions: write` - 管理 runners
-
-#### 权限说明
-
-**所需的阿里云 API 权限**：
-
-| API 权限 | 用途 | 工作流使用 | 实例角色使用 |
-|---------|------|-----------|------------|
-| `ecs:RunInstances` | 创建 spot 实例 | ✅ 所有构建工作流 | ❌ |
-| `ecs:DescribeInstances` | 查询实例状态 | ✅ 清理和列表操作 | ❌ |
-| `ecs:DeleteInstance` | 删除实例 | ✅ 清理工作流（兜底） | ✅ 实例自毁 |
-| `ecs:DescribeAvailableResource` | 查询可用资源和可用区 | ✅ spot-instance-advisor + 动态可用区查询 | ❌ |
-| `ecs:DescribeSpotPriceHistory` | 查询 spot 价格 | ✅ spot-instance-advisor | ❌ |
-| `ecs:DescribeImages` | 查询镜像信息 | ✅ 镜像验证 | ❌ |
-| `ecs:DescribeSecurityGroups` | 查询安全组 | ✅ 安全组验证 | ❌ |
-| `ecs:DescribeVSwitches` | 查询 VSwitches | ✅ 网络验证 | ❌ |
-| `ecs:DescribeVpcs` | 查询 VPCs | ✅ 网络验证 | ❌ |
-
-**注意**：如果使用实例角色实现自毁机制，需要为实例角色授予 `ecs:DeleteInstance` 权限
-
-#### 实例角色权限策略（用于实例自毁）
-
-如果使用实例角色实现实例内部自毁机制，需要创建独立的 RAM 角色并授予以下权限：
-
-**权限策略示例**：
-
-```json
-{
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "ecs:DeleteInstance",
-      "Resource": "acs:ecs:cn-hangzhou:*:instance/*",
+      "Resource": "acs:ecs:*:*:instance/*",
       "Condition": {
         "StringEquals": {
           "acs:ResourceTag/GIHUB_RUNNER_TYPE": [
@@ -284,17 +208,34 @@ aliyun ecs AuthorizeSecurityGroup \
 }
 ```
 
-**策略说明**：
+角色的信任策略：
 
-- **Action**: `ecs:DeleteInstance` - 允许删除 ECS 实例
-- **Resource**: `acs:ecs:${REGION_ID}:*:instance/*` - 指定区域内的所有实例（根据实际区域替换 `${REGION_ID}`）
-- **Condition**: 使用标签条件限制，只允许删除带有 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签的实例
-  - 标签条件提供更细粒度的权限控制
-  - 确保实例角色只能删除标记为 CI Runner 的实例，提高安全性
+```json
+{
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "ecs.aliyuncs.com"
+        ]
+      }
+    }
+  ],
+  "Version": "1"
+}
+```
+
+#### GitHub 权限
+
+- `contents: read` - 读取仓库内容
+- `packages: write` - 推送镜像
+- `actions: write` - 管理 runners
 
 **实例标签配置**：
 
-在创建 Spot 实例时，会自动添加以下标签：
+在创建 Spot 实例时，添加以下标签：
 
 - **标签 Key**: `GIHUB_RUNNER_TYPE`
 - **标签 Value**: `aliyun-ecs-spot`
@@ -303,19 +244,10 @@ aliyun ecs AuthorizeSecurityGroup \
 
 **创建实例角色步骤**：
 
-1. 在阿里云 RAM 控制台创建角色（如 `EcsSelfDestructRole`）
-2. 为角色授予上述权限策略（使用标签条件）
+1. 在阿里云 RAM 控制台创建角色（如 `GitHubRunnerSelfDestructRole`）
+2. 为角色授予前述权限策略，以及信任策略
 3. 创建实例时通过 `--RamRoleName` 参数指定实例角色
-4. 实例创建时会自动添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
-
-**注意事项**：
-
-- 权限策略中的区域 ID（如 `cn-hangzhou`）需要根据实际使用的区域进行替换
-- 标签 Key `GIHUB_RUNNER_TYPE` 是固定的，不要修改
-- 标签 Value `aliyun-ecs-spot` 是固定的，不要修改
-- 如果使用多个区域，需要为每个区域创建相应的权限策略
-
-详细配置请参考 [自动清理机制](#自动清理机制) 章节。
+4. 实例创建时添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
 
 **资源命名约定**：
 
@@ -325,15 +257,6 @@ aliyun ecs AuthorizeSecurityGroup \
 - VPC：`vpc-ci-runner`
 
 ## CPU 密集型构建优化
-
-### OpenResty 构建特性
-
-OpenResty 构建是典型的**CPU 密集型任务**，主要消耗：
-
-- **OpenSSL 编译**：加密算法需要大量 CPU 计算
-- **LuaJIT 编译**：JIT 编译器需要大量 CPU 资源  
-- **Nginx 模块编译**：各种 C 模块编译过程
-- **并行编译**：`make -j${RESTY_J}` 使用多核并行编译
 
 ### 并行度控制机制
 
@@ -359,22 +282,6 @@ build-args: |
   RESTY_J=${CPU_CORES}  # RESTY_J 应等于实例 CPU 核心数
 ```
 
-#### 并行度设置建议
-
-**RESTY_J 应等于实例的 CPU 核心数**，以充分利用 CPU 资源进行并行编译。
-
-| 实例核心数 | RESTY_J 值 | 使用场景 | 性能改进 |
-|-----------|-----------|---------|---------|
-| **8 核** | `RESTY_J=8` | 标准构建 | 基线 |
-| **16 核** | `RESTY_J=16` | 高性能构建 | 2 倍改进 |
-| **32 核** | `RESTY_J=32` | 超高性能 | 4 倍改进 |
-| **64 核** | `RESTY_J=64` | 极致性能 | 8 倍改进 |
-
-### 性能优化建议
-
-1. **实例选择**：AMD64 无实例族限制，ARM64 限制为 `ecs.c8y,ecs.c8r` 系列
-2. **并行度设置**：Dockerfile 默认 `RESTY_J=8`（匹配标准构建的 8 核实例），**工作流应动态设置 `RESTY_J` 等于实例 CPU 核心数**（16核→16，32核→32，64核→64）
-
 ## 自动清理机制
 
 ### 双重清理保障
@@ -389,10 +296,9 @@ build-args: |
 #### 工作原理
 
 1. **实例角色配置**：在创建 Spot 实例时，通过 `--RamRoleName` 参数指定实例角色
-2. **标签标记**：实例创建时自动添加标签 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot`
-3. **权限策略**：实例角色被授予删除带有该标签的实例的权限
-4. **自毁脚本**：在 User Data 脚本中安装自毁脚本，通过 Runner 的 post-job hook 或 systemd service 触发
-5. **自动删除**：Runner 退出后，自毁脚本使用实例角色权限自动删除自身实例
+2. **权限策略**：实例角色被授予删除带有该标签的实例的权限
+3. **自毁脚本**：在 User Data 脚本中安装自毁脚本，通过 Runner 的 post-job hook 或 systemd service 触发
+4. **自动删除**：Runner 退出后，自毁脚本使用实例角色权限自动删除自身实例
 
 #### 实现细节
 
@@ -407,56 +313,3 @@ build-args: |
 
 - 使用实例角色（RamRoleName）获取权限
 - 实例角色通过阿里云元数据服务自动获取，无需配置 Access Key
-
-**权限控制**：
-
-- 权限策略使用标签条件（`acs:ResourceTag/GIHUB_RUNNER_TYPE=aliyun-ecs-spot`）
-- 确保实例角色只能删除标记为 CI Runner 的实例，提高安全性
-
-#### 配置要求
-
-1. **创建 RAM 角色**：在阿里云 RAM 控制台创建角色（如 `EcsSelfDestructRole`）
-2. **授予权限策略**：为角色授予删除实例的权限（使用标签条件）
-3. **配置变量**：在 GitHub Variables 中配置 `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`
-4. **实例标签**：实例创建时自动添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
-
-#### 权限策略示例
-
-```json
-{
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "ecs:DeleteInstance",
-      "Resource": "acs:ecs:cn-hangzhou:*:instance/*",
-      "Condition": {
-        "StringEquals": {
-          "acs:ResourceTag/GIHUB_RUNNER_TYPE": [
-            "aliyun-ecs-spot"
-          ]
-        }
-      }
-    }
-  ]
-}
-```
-
-**策略说明**：
-
-- **Action**: `ecs:DeleteInstance` - 允许删除 ECS 实例
-- **Resource**: `acs:ecs:${REGION_ID}:*:instance/*` - 指定区域内的所有实例（根据实际区域替换 `${REGION_ID}`）
-- **Condition**: 使用标签条件限制，只允许删除带有 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签的实例
-
-**实例标签**：
-
-- **标签 Key**: `GIHUB_RUNNER_TYPE`（固定值，不要修改）
-- **标签 Value**: `aliyun-ecs-spot`（固定值，不要修改）
-- 标签在创建实例时自动添加，用于权限策略的条件匹配
-
-#### 优势
-
-1. **安全性**：使用标签条件限制权限，只能删除标记为 CI Runner 的实例
-2. **自动化**：无需手动干预，Runner 退出后自动删除实例
-3. **可靠性**：双重触发机制（post-job hook + systemd service）确保自毁脚本执行
-4. **成本控制**：避免实例长时间运行产生费用
