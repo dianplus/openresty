@@ -9,7 +9,7 @@
 使用 [`spot-instance-advisor`](https://github.com/maskshell/spot-instance-advisor) 工具实时查询指定资源需求的竞价实例价格，将返回按价格排序的多个结果集合（JSON 格式），结果字段中包含实例类型、单核价格、总核数以及可用区等信息。
 
 - 示例：`./spot-instance-advisor -accessKeyId=xxx -accessKeySecret=xxx -region=cn-hangzhou -mincpu=8 -maxcpu=8 -minmem=16 -maxmem=16 --json --arch=aarch64`
-- 解释：在区域`cn-hangzhou`中，查询CPU规格为8核（最大最小相同即指定规格），内存大小为16G（最大最小相同即指定规格），且CPU架构为aarch64（与arm64等义，可混用）的竞价实例价格信息，且以JSON格式输出
+- 说明：查询 `cn-hangzhou` 区域中 8 核 16G 的 ARM64 竞价实例价格（`aarch64` 与 `arm64` 等义）
 
 查询参数：
 
@@ -89,13 +89,7 @@ aliyun vpc CreateVSwitch \
 
 建议为可能命中的可用区预先建立好相应的 VPC 交换机。
 
-**注意**：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的 VSwitch ID 变量。
-
-例如：
-
-- `cn-hangzhou` 可能需要配置 B/G/H/I/J/K（ARM64 实例仅在 B/J/K 可用区内有效）
-- `cn-beijing` 可能需要配置 A/B/C
-- 只需要配置实际使用的可用区的变量，未使用的可用区变量可以不配置（为空值）
+**注意**：不同 region 的可用区后缀可能不同，需根据实际使用的 region 配置相应的 VSwitch ID 变量。例如 `cn-hangzhou` 可能需要配置 B/G/H/I/J/K，`cn-beijing` 可能需要配置 A/B/C。只需配置实际使用的可用区变量。
 
 #### 示例：创建安全组
 
@@ -170,14 +164,10 @@ aliyun ecs AuthorizeSecurityGroup \
 
 **注意**：
 
-- 变量名已简化，去掉了架构前缀（`AMD64_`/`ARM64_`），因为工作流中已经有 `ARCH` 环境变量区分架构
-- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（如果未设置）：
-  - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
-  - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
-- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以单独配置 `MIN_MEM`
-- `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（不需要配置）：
-  - `MAX_CPU`: 64（固定上限）
-  - `MAX_MEM`: AMD64 为 64，ARM64 为 128（固定上限）
+- 变量名已简化，去掉了架构前缀，因为工作流中已有 `ARCH` 环境变量区分架构
+- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（AMD64: 1:1，ARM64: 1:2）
+- 如需自定义 `MIN_MEM`，可单独配置
+- `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（64 和 64/128），无需配置
 
 ### 3. 权限配置
 

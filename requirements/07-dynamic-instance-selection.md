@@ -43,18 +43,23 @@
 
 ### 2. 动态实例选择脚本
 
-**文件**：`.github/scripts/select-instance.sh`
+**文件**：`.github/scripts/select-instance.py`
 
 **功能**：
 
 - 接收架构参数（amd64/arm64）
 - 根据架构设置查询参数（CPU:RAM 比例、规格范围）
 - 调用 `spot-instance-advisor` 工具
-- 使用 `jq` 解析 JSON 结果（带 `grep/sed` 回退）
+- 使用 `json` 模块解析 JSON 结果
+- 支持多种 JSON 字段名格式（snake_case、PascalCase、camelCase）
+- 实现渐进式查询策略（精确匹配 → 范围查询）
 - 提取多个候选结果（最多 5 个，按价格排序）
+- 过滤实例（只保留符合最小要求的实例）
 - 选择价格最优的实例（第一个结果）
 - 计算总价和价格限制（最低总价的 120%）
 - 根据可用区映射 VSwitch ID
+- 生成候选结果文件（包含 VSwitch ID 和 Spot Price Limit）
+- 输出查询时间统计
 - 输出：实例类型、可用区、VSwitch ID、价格限制、CPU 核心数、候选结果文件
 
 **输出格式**：
@@ -69,24 +74,26 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 ```
 
 **候选结果文件格式**：
-每行一个候选结果，格式为：`INSTANCE_TYPE|ZONE_ID|PRICE_PER_CORE|CPU_CORES`
+每行一个候选结果，格式为：`INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES`
+
+**注意**：候选文件已包含 VSwitch ID 和 Spot Price Limit，避免在后续步骤中重复计算和映射。
 
 ### 3. 失败重试机制
 
 **实现方式**：
 
-- `select-instance.sh` 返回多个候选结果（最多 5 个）
-- `create-spot-instance.sh` 实现重试逻辑：
+- `select-instance.py` 返回多个候选结果（最多 5 个）
+- `create-spot-instance.py` 实现重试逻辑：
   - 如果有候选结果文件，依次尝试每个候选结果
-  - 为每个候选结果计算价格限制和 VSwitch ID
+  - 候选文件中已包含 VSwitch ID 和 Spot Price Limit，无需重复计算
   - 如果第一个失败，自动尝试下一个
   - 所有候选结果都失败后，返回错误
 
 **重试逻辑**：
 
-1. 读取候选结果文件
+1. 读取候选结果文件（格式：`INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES`）
 2. 遍历每个候选结果
-3. 为每个候选结果构建创建命令
+3. 为每个候选结果构建创建命令（直接使用候选文件中的 VSwitch ID 和 Spot Price Limit）
 4. 执行创建命令
 5. 如果成功，返回实例 ID
 6. 如果失败，继续下一个候选结果
@@ -100,9 +107,10 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 **实现方式**：
 
-- 在 `select-instance.sh` 中计算价格限制
+- 在 `select-instance.py` 中计算价格限制
 - 输出价格限制值到工作流
-- 在 `create-spot-instance.sh` 中添加 `--SpotPriceLimit` 参数支持
+- 在候选结果文件中包含 Spot Price Limit
+- 在 `create-spot-instance.py` 中从候选文件读取 Spot Price Limit，并添加 `--SpotPriceLimit` 参数支持
 
 ### 5. VSwitch ID 动态映射
 
@@ -146,12 +154,10 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 **注意**：
 
-- `min_mem` 已移除，由脚本根据 `min_cpu` 和架构自动计算：
-  - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
-  - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
+- `min_mem` 已移除，由脚本根据 `min_cpu` 和架构自动计算（AMD64: 1:1，ARM64: 1:2）
 - `max_cpu` 和 `max_mem` 已移除，使用脚本默认值（64 和 64/128）
-- 变量名已简化，去掉了架构前缀，因为工作流中已经有 `ARCH` 环境变量区分架构
-- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以通过 GitHub Variables 配置 `MIN_MEM`
+- 变量名已简化，去掉了架构前缀，因为工作流中已有 `ARCH` 环境变量区分架构
+- 如需自定义 `MIN_MEM`，可通过 GitHub Variables 配置
 
 **使用方式**：
 
@@ -163,53 +169,20 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 **示例**：
 
-- 如果需要使用 4 核起始规格，在 `min_cpu` 输入框中输入 `4`
-- 如果需要使用 16 核起始规格，在 `min_cpu` 输入框中输入 `16`
-- 如果不输入任何值，将使用 GitHub Variables 中配置的值或默认值
+- 使用 4 核起始规格：输入 `4`
+- 使用 16 核起始规格：输入 `16`
+- 不输入任何值：使用 GitHub Variables 中配置的值或默认值
 
-**输入验证和错误处理**：
+**输入验证**：
 
-脚本会对输入值进行验证，如果输入无效值，工作流会在 "Select Optimal Instance" 步骤失败：
+脚本会验证输入值，无效值会导致工作流在 "Select Optimal Instance" 步骤失败：
 
-1. **小数输入**（如 `5.5`）：
-   - GitHub Actions 的 `number` 类型会接受小数
-   - 但脚本的正则验证 `^[0-9]+$` 只接受正整数
-   - 结果：验证失败，报错 `Invalid CPU or memory values`
-   - 工作流失败
+- **小数/负数/字符**：验证失败，报错 `Invalid CPU or memory values`
+- **不存在的核数**：可能找不到匹配实例，报错 `No spot instances found matching the criteria`
+- **超出范围**：`MIN_CPU > MAX_CPU` 时验证失败
+- **空字符串**：使用默认值（8），工作流正常执行
 
-2. **负数输入**（如 `-4`）：
-   - GitHub Actions 的 `number` 类型会接受负数
-   - 但脚本的正则验证 `^[0-9]+$` 只接受正整数
-   - 结果：验证失败，报错 `Invalid CPU or memory values`
-   - 工作流失败
-
-3. **不存在的核数**（如 `3`）：
-   - 格式验证通过（是正整数）
-   - 但可能不是有效的实例规格
-   - `spot-instance-advisor` 可能找不到匹配的实例
-   - 结果：如果找不到匹配实例，报错 `No spot instances found matching the criteria`
-   - 工作流失败
-
-4. **超出范围的值**（如 `MIN_CPU=100 > MAX_CPU=64`）：
-   - 脚本会验证 `MIN_CPU <= MAX_CPU`
-   - 结果：验证失败，报错 `MIN_CPU must be less than or equal to MAX_CPU`
-   - 工作流失败
-
-5. **字符输入**（如 `abc`）：
-   - GitHub Actions UI 中无法输入（`number` 类型限制）
-   - 如果通过 API 或其他方式传入，脚本验证会失败
-   - 结果：验证失败，报错 `Invalid CPU or memory values`
-   - 工作流失败
-
-6. **空字符串**：
-   - 使用默认值（AMD64: 8, ARM64: 8）
-   - 工作流正常执行
-
-**建议**：
-
-- 输入正整数（如 `4`、`8`、`16`、`32`）
-- 确保 `MIN_CPU <= MAX_CPU`（默认 MAX_CPU=64）
-- 使用常见的实例规格（如 2、4、8、16、32、64 核）
+**建议**：输入正整数（如 4、8、16、32），确保 `MIN_CPU <= MAX_CPU`（默认 64）
 
 ## 工作流集成
 
@@ -229,7 +202,7 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 **功能**：
 
-- 调用 `select-instance.sh` 脚本
+- 调用 `select-instance.py` 脚本
 - 解析输出并设置 GitHub Actions 输出
 - 将 `CANDIDATES_FILE` 导出到环境变量
 
@@ -242,43 +215,68 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 - `SPOT_ADVISOR_BINARY`
 - `ALIYUN_VSWITCH_ID_B` 到 `ALIYUN_VSWITCH_ID_K`（所有可用区）
 
-### 3. Create Spot Instance 步骤
+### 3. Generate User Data 步骤
+
+**位置**：`build-amd64.yml` 和 `build-arm64.yml` 的 `setup` job
+
+**功能**：
+
+- 生成 User Data 脚本内容
+- 使用 base64 编码，避免转义和解析问题
+- 输出 `user_data_b64` 到 GitHub Actions 输出
+
+### 4. Create Spot Instance 步骤
 
 **位置**：`build-amd64.yml` 和 `build-arm64.yml` 的 `setup` job
 
 **更新**：
 
+- 使用 `write-user-data.py` 脚本将 base64 编码的 User Data 写入文件
+- 调用 `create-spot-instance.py` 脚本
 - 使用动态值替换固定配置：
   - `INSTANCE_TYPE`: `${{ steps.select-instance.outputs.INSTANCE_TYPE }}`
   - `ALIYUN_VSWITCH_ID`: `${{ steps.select-instance.outputs.VSWITCH_ID }}`
   - `SPOT_PRICE_LIMIT`: `${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}`
   - `CANDIDATES_FILE`: `${{ steps.select-instance.outputs.CANDIDATES_FILE }}`
+  - `USER_DATA_B64`: `${{ steps.user-data.outputs.user_data_b64 }}`
 
 ## 技术要点
 
 ### JSON 处理
 
-**使用 jq（推荐）**：
+**使用 `json` 模块**：
 
 - 解析 JSON 数组
 - 提取字段值
-- 支持多种字段名称（`instance_type`/`InstanceType` 等）
+- 支持多种字段名称（`instanceTypeId`/`instance_type`/`InstanceType` 等）
+- 自动处理字段名格式（snake_case、PascalCase、camelCase）
 
-**回退方案（grep/sed）**：
+### 渐进式查询策略
 
-- 如果没有 `jq`，使用 `grep` 和 `cut` 提取字段
-- 支持多个候选结果的提取
+**查询策略**：
+
+1. **精确匹配查询**（优先）：
+   - AMD64: 先尝试 `8c8g`（1:1），如果失败则尝试 `8c16g`（1:2）
+   - ARM64: 先尝试 `8c16g`（1:2）
+   - 如果最小 CPU < 16，则尝试 `16c16g`（AMD64 1:1）和 `16c32g`（AMD64 1:2）
+
+2. **范围查询**（备选）：
+   - 如果精确匹配查询没有结果，则使用范围查询
+   - 范围：`MIN_CPU-MAX_CPU` 核心，`MIN_MEM-MAX_MEM` GB
+
+**优势**：
+
+- 显著减少查询时间（从 ~55 秒降至 ~3 秒）
+- 优先匹配精确资源需求，避免资源浪费
+- 仅在必要时扩大查询范围
 
 ### 浮点数计算
 
-**使用 bc（推荐）**：
+**使用内置运算**：
 
+- 直接使用浮点数运算
 - 计算总价和价格限制
-- 支持浮点数运算
-
-**回退方案（awk）**：
-
-- 如果没有 `bc`，使用 `awk` 进行浮点数计算
+- 支持精确的浮点数运算
 
 ### 错误处理
 
@@ -298,13 +296,19 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 ### 新建文件
 
-- `.github/scripts/select-instance.sh` - 动态实例选择脚本
+- `.github/scripts/select-instance.py` - 动态实例选择脚本
+- `.github/scripts/create-spot-instance.py` - 创建 Spot 实例脚本
+- `.github/scripts/write-user-data.py` - User Data 写入脚本（处理 base64 解码）
 
 ### 修改文件
 
-- `.github/scripts/create-spot-instance.sh` - 添加价格限制和重试逻辑支持
 - `.github/workflows/build-amd64.yml` - 集成动态实例选择
 - `.github/workflows/build-arm64.yml` - 集成动态实例选择
+
+### 已废弃文件
+
+- `.github/scripts/select-instance.sh` - 已迁移到 Python 实现
+- `.github/scripts/create-spot-instance.sh` - 已迁移到 Python 实现
 
 ## 配置要求
 
@@ -317,8 +321,7 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 **配置原则**：
 
 - 根据实际使用的 region 配置相应的 VSwitch ID 变量
-- 只需要配置实际使用的可用区的变量，未使用的可用区变量可以不配置（为空值）
-- 脚本会自动跳过未配置的可用区变量
+- 只需配置实际使用的可用区变量，脚本会自动跳过未配置的变量
 
 **示例配置**：
 
@@ -348,15 +351,11 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 **配置说明**：
 
-- 变量名已简化，去掉了架构前缀（`AMD64_`/`ARM64_`），因为工作流中已经有 `ARCH` 环境变量区分架构
-- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（如果未设置）：
-  - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
-  - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
-- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以单独配置 `MIN_MEM`
-- `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（不需要配置）：
-  - `MAX_CPU`: 64（固定上限）
-  - `MAX_MEM`: AMD64 为 64，ARM64 为 128（固定上限）
-- 如果未设置 `MIN_CPU`，使用默认值 8
+- 变量名已简化，去掉了架构前缀，因为工作流中已有 `ARCH` 环境变量区分架构
+- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（AMD64: 1:1，ARM64: 1:2）
+- 如需自定义 `MIN_MEM`，可单独配置
+- `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（64 和 64/128），无需配置
+- 未设置 `MIN_CPU` 时，使用默认值 8
 
 **配置优先级**：
 
@@ -378,9 +377,13 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 
 ### spot-instance-advisor 版本
 
-当前默认版本：`v1.0.0`
+**版本获取方式**：
 
-**注意**：需要根据实际版本调整工作流中的 `ADVISOR_VERSION` 变量。
+- 自动从 GitHub API 获取最新 release 版本
+- 如果 API 调用失败，使用回退版本 `v1.0.1`
+- 回退版本说明：从 v1.0.1 开始支持 `--arch` 参数
+
+**注意**：工作流会自动获取最新版本，无需手动配置版本号。
 
 ## 测试建议
 
