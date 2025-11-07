@@ -189,6 +189,33 @@ jobs:
           ARCH: ${{ env.ARCH }}
           SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
           CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
+          # VSwitch ID 变量映射（用于重试机制，根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
         run: |
           # 将 User Data 写入临时文件，使用单引号 heredoc，避免 bash 展开其中的 ${VAR}
           cat > /tmp/user-data.sh <<'EOF'

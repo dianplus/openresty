@@ -128,7 +128,6 @@ CMD="aliyun ecs RunInstances \
   --VSwitchId ${ALIYUN_VSWITCH_ID} \
   --InstanceName ${INSTANCE_NAME} \
   --InstanceChargeType PostPaid \
-  --SpotStrategy SpotAsPriceGo \
   --SystemDisk.Category cloud_essd \
   --SecurityEnhancementStrategy Deactive \
   --Tag.1.Key GIHUB_RUNNER_TYPE \
@@ -144,9 +143,12 @@ if [[ -n "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" ]]; then
   CMD="${CMD} --RamRoleName ${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}"
 fi
 
-# 添加 Spot 价格限制（如果提供）
+# 添加 Spot 策略和价格限制（如果提供）
+# 如果设置了 SpotPriceLimit，使用 SpotWithPriceLimit；否则使用 SpotAsPriceGo
 if [[ -n "${SPOT_PRICE_LIMIT}" ]]; then
-  CMD="${CMD} --SpotPriceLimit ${SPOT_PRICE_LIMIT}"
+  CMD="${CMD} --SpotStrategy SpotWithPriceLimit --SpotPriceLimit ${SPOT_PRICE_LIMIT}"
+else
+  CMD="${CMD} --SpotStrategy SpotAsPriceGo"
 fi
 
 # 添加 User Data（如果提供）
@@ -278,7 +280,6 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
       --VSwitchId ${CAND_VSWITCH_ID} \
       --InstanceName ${INSTANCE_NAME} \
       --InstanceChargeType PostPaid \
-      --SpotStrategy SpotAsPriceGo \
       --SystemDisk.Category cloud_essd \
       --SecurityEnhancementStrategy Deactive \
       --Tag.1.Key GIHUB_RUNNER_TYPE \
@@ -294,9 +295,12 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
       CMD_CAND="${CMD_CAND} --RamRoleName ${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}"
     fi
     
-    # 添加 Spot 价格限制（如果提供）
+    # 添加 Spot 策略和价格限制（如果提供）
+    # 如果设置了 SpotPriceLimit，使用 SpotWithPriceLimit；否则使用 SpotAsPriceGo
     if [[ -n "${CAND_SPOT_PRICE_LIMIT}" ]]; then
-      CMD_CAND="${CMD_CAND} --SpotPriceLimit ${CAND_SPOT_PRICE_LIMIT}"
+      CMD_CAND="${CMD_CAND} --SpotStrategy SpotWithPriceLimit --SpotPriceLimit ${CAND_SPOT_PRICE_LIMIT}"
+    else
+      CMD_CAND="${CMD_CAND} --SpotStrategy SpotAsPriceGo"
     fi
     
     # 添加 User Data（如果提供）
