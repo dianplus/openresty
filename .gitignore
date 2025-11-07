@@ -8,3 +8,4 @@ __pycache__/
 *.pyd
 .Python
 ITERATION_PLAN.md
+spot-instance-advisor
