@@ -234,9 +234,7 @@ log "Configuring Aliyun CLI to use instance role authentication"
 aliyun configure set \
     --mode EcsRamRole \
     --ram-role-name "${RAM_ROLE_NAME}" \
-    --region "${REGION_ID}" \
-    --output json \
-    --language en 2>&1 | tee -a "${LOG_FILE}" || {
+    --region "${REGION_ID}" 2>&1 | tee -a "${LOG_FILE}" || {
     log "Error: Failed to configure Aliyun CLI"
     exit 1
 }

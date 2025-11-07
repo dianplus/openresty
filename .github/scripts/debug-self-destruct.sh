@@ -182,9 +182,7 @@ if command -v aliyun &> /dev/null; then
             aliyun configure set \
                 --mode EcsRamRole \
                 --ram-role-name "${RAM_ROLE_NAME}" \
-                --region "${REGION_ID}" \
-                --output json \
-                --language en 2>&1 | sed 's/^/      /' || echo "      配置失败，继续测试..."
+                --region "${REGION_ID}" 2>&1 | sed 's/^/      /' || echo "      配置失败，继续测试..."
         fi
         
         # 只查询实例信息，不删除
