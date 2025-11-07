@@ -58,7 +58,8 @@ if [[ "${ARCH}" == "amd64" ]]; then
   MIN_CPU="${MIN_CPU:-8}"
   MAX_CPU="${MAX_CPU:-64}"
   # 如果未设置 MIN_MEM，根据 MIN_CPU 计算（1:1 比例）
-  if [[ -z "${MIN_MEM}" ]]; then
+  # 使用 ${MIN_MEM:-} 避免 set -u 报错
+  if [[ -z "${MIN_MEM:-}" ]]; then
     MIN_MEM="${MIN_CPU}"
   else
     MIN_MEM="${MIN_MEM}"
@@ -71,7 +72,8 @@ elif [[ "${ARCH}" == "arm64" ]]; then
   MIN_CPU="${MIN_CPU:-8}"
   MAX_CPU="${MAX_CPU:-64}"
   # 如果未设置 MIN_MEM，根据 MIN_CPU 计算（1:2 比例）
-  if [[ -z "${MIN_MEM}" ]]; then
+  # 使用 ${MIN_MEM:-} 避免 set -u 报错
+  if [[ -z "${MIN_MEM:-}" ]]; then
     MIN_MEM=$((MIN_CPU * 2))
   else
     MIN_MEM="${MIN_MEM}"
