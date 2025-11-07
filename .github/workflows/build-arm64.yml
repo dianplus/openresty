@@ -14,10 +14,6 @@ on:
         description: '起始 CPU 核心数（可选，默认使用 vars.MIN_CPU 或 8）'
         required: false
         type: number
-      min_mem:
-        description: '起始内存 GB（可选，默认根据 min_cpu 自动计算，ARM64: 1:2）'
-        required: false
-        type: number
 
 env:
   REGISTRY: ghcr.io
@@ -112,7 +108,7 @@ jobs:
           # MAX_CPU 和 MAX_MEM 使用脚本默认值（64 和 128）
           # 注意：inputs.min_cpu 如果是 number 类型且未设置，值为空字符串 ''
           MIN_CPU: ${{ inputs.min_cpu != '' && inputs.min_cpu || (vars.MIN_CPU != '' && vars.MIN_CPU || '') }}
-          MIN_MEM: ${{ inputs.min_mem != '' && inputs.min_mem || '' }}
+          # MIN_MEM 由脚本根据 MIN_CPU 和架构自动计算，不需要配置
           # VSwitch ID 变量映射（根据可用区动态选择）
           # 注意：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的变量
           # 例如：cn-hangzhou 可能有 B/G/H/I/J/K，cn-beijing 可能有 A/B/C

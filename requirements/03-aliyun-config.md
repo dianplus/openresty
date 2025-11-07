@@ -89,7 +89,10 @@ aliyun vpc CreateVSwitch \
 
 建议为可能命中的可用区预先建立好相应的 VPC 交换机。
 
-**注意**：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的 VSwitch ID 变量。例如：
+**注意**：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的 VSwitch ID 变量。
+
+例如：
+
 - `cn-hangzhou` 可能需要配置 B/G/H/I/J/K（ARM64 实例仅在 B/J/K 可用区内有效）
 - `cn-beijing` 可能需要配置 A/B/C
 - 只需要配置实际使用的可用区的变量，未使用的可用区变量可以不配置（为空值）
@@ -163,12 +166,15 @@ aliyun ecs AuthorizeSecurityGroup \
 | `ALIYUN_AMD64_IMAGE_ID` | AMD64 镜像 ID（推荐 Ubuntu 24） | m-xxx |
 | `ALIYUN_KEY_PAIR_NAME` | 用于 root 访问的 SSH 密钥对名称 | my-key-pair |
 | `MIN_CPU` | 实例最小 CPU 核心数（可选，默认 8） | 8 |
+| `MIN_MEM` | 实例最小内存 GB（可选，默认根据 `MIN_CPU` 和架构自动计算） | 8 或 16 |
 
 **注意**：
+
 - 变量名已简化，去掉了架构前缀（`AMD64_`/`ARM64_`），因为工作流中已经有 `ARCH` 环境变量区分架构
-- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算：
+- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（如果未设置）：
   - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
   - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
+- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以单独配置 `MIN_MEM`
 - `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（不需要配置）：
   - `MAX_CPU`: 64（固定上限）
   - `MAX_MEM`: AMD64 为 64，ARM64 为 128（固定上限）

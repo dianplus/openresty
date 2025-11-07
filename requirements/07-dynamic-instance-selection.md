@@ -143,14 +143,15 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 **工作流输入参数**：
 
 - `min_cpu` - 起始 CPU 核心数（可选，默认使用 `vars.MIN_CPU` 或 8）
-- `min_mem` - 起始内存 GB（可选，默认根据 `min_cpu` 和架构自动计算）
-  - AMD64: `min_mem = min_cpu`（1:1 比例）
-  - ARM64: `min_mem = min_cpu * 2`（1:2 比例）
 
 **注意**：
 
+- `min_mem` 已移除，由脚本根据 `min_cpu` 和架构自动计算：
+  - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
+  - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
 - `max_cpu` 和 `max_mem` 已移除，使用脚本默认值（64 和 64/128）
 - 变量名已简化，去掉了架构前缀，因为工作流中已经有 `ARCH` 环境变量区分架构
+- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以通过 GitHub Variables 配置 `MIN_MEM`
 
 **使用方式**：
 
@@ -343,13 +344,15 @@ CANDIDATES_FILE=/tmp/candidates-xxx.txt
 **变量配置**：
 
 - `MIN_CPU` - 最小 CPU 核心数（可选，默认 8）
+- `MIN_MEM` - 最小内存 GB（可选，默认根据 `MIN_CPU` 和架构自动计算）
 
 **配置说明**：
 
 - 变量名已简化，去掉了架构前缀（`AMD64_`/`ARM64_`），因为工作流中已经有 `ARCH` 环境变量区分架构
-- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算：
+- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算（如果未设置）：
   - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
   - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
+- 如果需要自定义 `MIN_MEM`（不按 1:1 或 1:2 比例），可以单独配置 `MIN_MEM`
 - `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（不需要配置）：
   - `MAX_CPU`: 64（固定上限）
   - `MAX_MEM`: AMD64 为 64，ARM64 为 128（固定上限）

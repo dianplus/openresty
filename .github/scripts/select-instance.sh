@@ -152,12 +152,13 @@ if [[ "${USE_JQ}" == "true" ]]; then
 
   # 提取所有候选结果（按价格排序，已由工具完成）
   # 输出格式：每行一个候选结果，格式为 "INSTANCE_TYPE|ZONE_ID|PRICE_PER_CORE|CPU_CORES"
+  # 支持多种字段名格式：snake_case, PascalCase, camelCase
   CANDIDATES_FILE=$(mktemp)
   for ((i=0; i<ARRAY_LENGTH; i++)); do
-    INSTANCE_TYPE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].instance_type // .[${i}].InstanceType // empty")
-    ZONE_ID=$(echo "${JSON_RESULT}" | jq -r ".[${i}].zone_id // .[${i}].ZoneId // empty")
-    PRICE_PER_CORE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].price_per_core // .[${i}].PricePerCore // .[${i}].price // .[${i}].Price // empty")
-    CPU_CORES=$(echo "${JSON_RESULT}" | jq -r ".[${i}].cpu_cores // .[${i}].CpuCores // .[${i}].cores // .[${i}].Cores // empty")
+    INSTANCE_TYPE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].instanceTypeId // .[${i}].instance_type // .[${i}].InstanceType // empty")
+    ZONE_ID=$(echo "${JSON_RESULT}" | jq -r ".[${i}].zoneId // .[${i}].zone_id // .[${i}].ZoneId // empty")
+    PRICE_PER_CORE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].pricePerCore // .[${i}].price_per_core // .[${i}].PricePerCore // .[${i}].price // .[${i}].Price // empty")
+    CPU_CORES=$(echo "${JSON_RESULT}" | jq -r ".[${i}].cpuCoreCount // .[${i}].cpu_cores // .[${i}].CpuCores // .[${i}].cores // .[${i}].Cores // empty")
     
     if [[ -n "${INSTANCE_TYPE}" && -n "${ZONE_ID}" && -n "${PRICE_PER_CORE}" ]]; then
       echo "${INSTANCE_TYPE}|${ZONE_ID}|${PRICE_PER_CORE}|${CPU_CORES}" >> "${CANDIDATES_FILE}"
@@ -179,14 +180,19 @@ else
   
   # 提取所有候选结果（最多 5 个）
   # 由于没有 jq，我们使用简单的文本处理来提取多个结果
-  INSTANCE_TYPES=$(echo "${JSON_RESULT}" | grep -o '"instance_type":"[^"]*' | cut -d'"' -f4 || \
+  # 支持多种字段名格式：snake_case, PascalCase, camelCase
+  INSTANCE_TYPES=$(echo "${JSON_RESULT}" | grep -o '"instanceTypeId":"[^"]*' | cut -d'"' -f4 || \
+                   echo "${JSON_RESULT}" | grep -o '"instance_type":"[^"]*' | cut -d'"' -f4 || \
                    echo "${JSON_RESULT}" | grep -o '"InstanceType":"[^"]*' | cut -d'"' -f4 || echo "")
-  ZONE_IDS=$(echo "${JSON_RESULT}" | grep -o '"zone_id":"[^"]*' | cut -d'"' -f4 || \
+  ZONE_IDS=$(echo "${JSON_RESULT}" | grep -o '"zoneId":"[^"]*' | cut -d'"' -f4 || \
+             echo "${JSON_RESULT}" | grep -o '"zone_id":"[^"]*' | cut -d'"' -f4 || \
              echo "${JSON_RESULT}" | grep -o '"ZoneId":"[^"]*' | cut -d'"' -f4 || echo "")
-  PRICE_PER_CORES=$(echo "${JSON_RESULT}" | grep -o '"price_per_core":[0-9.]*' | cut -d':' -f2 || \
-                     echo "${JSON_RESULT}" | grep -o '"PricePerCore":[0-9.]*' | cut -d':' -f2 || \
-                     echo "${JSON_RESULT}" | grep -o '"price":[0-9.]*' | cut -d':' -f2 || echo "")
-  CPU_CORES_LIST=$(echo "${JSON_RESULT}" | grep -o '"cpu_cores":[0-9]*' | cut -d':' -f2 || \
+  PRICE_PER_CORES=$(echo "${JSON_RESULT}" | grep -o '"pricePerCore":[0-9.]*' | cut -d':' -f2 || \
+                    echo "${JSON_RESULT}" | grep -o '"price_per_core":[0-9.]*' | cut -d':' -f2 || \
+                    echo "${JSON_RESULT}" | grep -o '"PricePerCore":[0-9.]*' | cut -d':' -f2 || \
+                    echo "${JSON_RESULT}" | grep -o '"price":[0-9.]*' | cut -d':' -f2 || echo "")
+  CPU_CORES_LIST=$(echo "${JSON_RESULT}" | grep -o '"cpuCoreCount":[0-9]*' | cut -d':' -f2 || \
+                   echo "${JSON_RESULT}" | grep -o '"cpu_cores":[0-9]*' | cut -d':' -f2 || \
                    echo "${JSON_RESULT}" | grep -o '"CpuCores":[0-9]*' | cut -d':' -f2 || \
                    echo "${JSON_RESULT}" | grep -o '"cores":[0-9]*' | cut -d':' -f2 || echo "")
   
