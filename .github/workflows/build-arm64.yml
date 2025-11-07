@@ -140,8 +140,8 @@ jobs:
           ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
           ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
         run: |
-          # 调用 select-instance.sh 脚本
-          OUTPUT=$(bash .github/scripts/select-instance.sh)
+          # 调用 select-instance.py 脚本
+          OUTPUT=$(python3 .github/scripts/select-instance.py)
           
           # 解析输出并设置 GitHub Actions 输出
           while IFS='=' read -r key value; do
@@ -168,9 +168,9 @@ jobs:
           ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
           USER_DATA=$(bash .github/scripts/generate-user-data.sh)
-          echo "user_data<<EOF" >> $GITHUB_OUTPUT
-          echo "${USER_DATA}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # 使用 base64 编码，避免环境变量传递时的转义问题
+          USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+          echo "user_data_b64=${USER_DATA_B64}" >> $GITHUB_OUTPUT
 
       - name: Create Spot Instance
         id: create-instance
@@ -216,12 +216,11 @@ jobs:
           ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
           ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
           ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          USER_DATA_B64: ${{ steps.user-data.outputs.user_data_b64 }}
         run: |
-          # 将 User Data 写入临时文件，使用单引号 heredoc，避免 bash 展开其中的 ${VAR}
-          cat > /tmp/user-data.sh <<'EOF'
-          ${{ steps.user-data.outputs.user_data }}
-          EOF
-          echo "User Data file created, size: $(wc -c < /tmp/user-data.sh) bytes"
+          # 将 User Data 写入临时文件，使用 Python 脚本避免在日志中暴露敏感信息
+          # 通过 base64 编码的环境变量传递，避免转义和解析问题
+          python3 .github/scripts/write-user-data.py /tmp/user-data.sh
           export USER_DATA_FILE=/tmp/user-data.sh
           export DEBUG=true  # 启用调试模式，输出详细的 VSwitch ID 映射信息
           # 注意：不启用 set -x，避免输出 User Data 内容（包含敏感信息）
@@ -229,7 +228,7 @@ jobs:
           # 执行脚本并捕获输出，将标准输出和标准错误分离
           # 脚本应该只输出实例 ID 到标准输出，其他信息输出到标准错误
           # 使用临时文件捕获所有输出，同时显示标准错误以便调试
-          bash .github/scripts/create-spot-instance.sh > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
+          python3 .github/scripts/create-spot-instance.py > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
             EXIT_CODE=$?
             echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
             echo "=== Error Output ==="
