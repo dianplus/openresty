@@ -34,16 +34,38 @@ fi
 log "Instance ID: ${INSTANCE_ID}"
 log "Region ID: ${REGION_ID}"
 
-# 配置 Aliyun CLI
-# 使用实例角色进行认证（实例角色会自动通过元数据服务获取，无需配置）
-log "Using instance role for authentication"
-# 如果实例配置了 RamRoleName，Aliyun CLI 会自动使用实例角色
-
 # 检查 Aliyun CLI 是否已安装
 if ! command -v aliyun &> /dev/null; then
     log "Error: Aliyun CLI is not installed"
     exit 1
 fi
+
+# 配置 Aliyun CLI 使用实例角色认证
+# 获取实例角色名称（从元数据服务）
+RAM_ROLE_NAME=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/ram/security-credentials/" || echo "")
+
+if [[ -z "${RAM_ROLE_NAME}" ]]; then
+    log "Error: Failed to get RAM role name from metadata service"
+    log "Please ensure the instance has a RAM role attached"
+    exit 1
+fi
+
+log "RAM Role Name: ${RAM_ROLE_NAME}"
+log "Configuring Aliyun CLI to use instance role authentication"
+
+# 配置 aliyun cli 使用实例角色认证
+# 使用非交互式方式配置
+aliyun configure set \
+    --mode EcsRamRole \
+    --ram-role-name "${RAM_ROLE_NAME}" \
+    --region "${REGION_ID}" \
+    --output json \
+    --language en 2>&1 | tee -a "${LOG_FILE}" || {
+    log "Error: Failed to configure Aliyun CLI"
+    exit 1
+}
+
+log "Aliyun CLI configured successfully"
 
 # 等待一段时间，确保 Runner 完全退出
 log "Waiting 10 seconds before self-destruct..."

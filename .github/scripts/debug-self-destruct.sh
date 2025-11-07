@@ -175,6 +175,18 @@ echo "10. 测试 Aliyun CLI 连接"
 if command -v aliyun &> /dev/null; then
     echo "   测试获取实例信息（不删除）:"
     if [[ -n "${INSTANCE_ID}" && -n "${REGION_ID}" ]]; then
+        # 先配置 Aliyun CLI 使用实例角色认证（如果未配置）
+        RAM_ROLE_NAME=$(curl -s --connect-timeout 5 --max-time 10 "http://100.100.100.200/latest/meta-data/ram/security-credentials/" 2>/dev/null || echo "")
+        if [[ -n "${RAM_ROLE_NAME}" ]]; then
+            echo "   配置 Aliyun CLI 使用实例角色认证..."
+            aliyun configure set \
+                --mode EcsRamRole \
+                --ram-role-name "${RAM_ROLE_NAME}" \
+                --region "${REGION_ID}" \
+                --output json \
+                --language en 2>&1 | sed 's/^/      /' || echo "      配置失败，继续测试..."
+        fi
+        
         # 只查询实例信息，不删除
         RESPONSE=$(aliyun ecs DescribeInstances \
             --RegionId "${REGION_ID}" \
