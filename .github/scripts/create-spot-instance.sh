@@ -6,9 +6,9 @@
 set -euo pipefail
 
 # 启用调试模式（如果设置了 DEBUG 环境变量）
-if [[ "${DEBUG:-}" == "true" ]]; then
-  set -x
-fi
+# 注意：不在脚本开头启用 set -x，避免输出敏感信息（如 User Data 内容）
+# 如果需要调试，可以在特定位置临时启用
+DEBUG_MODE="${DEBUG:-false}"
 
 # 错误处理函数
 error_exit() {
@@ -157,7 +157,12 @@ fi
 # 优先使用文件方式，避免环境变量传递多行脚本的问题
 if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
   # 从文件读取 User Data，并规范化换行（去除 CRLF），避免 /bin/bash^M 导致 127
+  # 临时禁用调试输出，避免输出 User Data 内容（包含敏感信息）
+  set +x 2>/dev/null || true
   RAW_USER_DATA=$(cat "${USER_DATA_FILE}")
+  if [[ "${DEBUG_MODE}" == "true" ]]; then
+    set -x
+  fi
   USER_DATA=$(printf "%s" "${RAW_USER_DATA}" | sed 's/\r$//')
   USER_DATA_SIZE=$(printf "%s" "${USER_DATA}" | wc -c | awk '{print $1}')
   echo "Using User Data from file: ${USER_DATA_FILE} (${USER_DATA_SIZE} bytes, normalized)" >&2
@@ -294,8 +299,13 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
     # 添加 User Data（如果提供）
     # 在每次尝试时进行 base64 编码，避免不必要的提前编码
     if [[ -n "${USER_DATA}" ]]; then
+      # 临时禁用调试输出，避免输出 base64 编码的 User Data 内容
+      set +x 2>/dev/null || true
       # 将 User Data 编码为 base64（阿里云要求）
       CAND_USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+      if [[ "${DEBUG_MODE}" == "true" ]]; then
+        set -x
+      fi
       if [[ -z "${CAND_USER_DATA_B64}" ]]; then
         echo "Error: Failed to encode User Data to base64 for candidate ${ATTEMPT}" >&2
         continue
@@ -340,6 +350,22 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
   exit 1
 else
   # 没有候选结果文件，使用原始逻辑（单次尝试）
+  # 编码 User Data 为 base64（仅在单次尝试时使用）
+  if [[ -n "${USER_DATA}" ]]; then
+    # 临时禁用调试输出，避免输出 base64 编码的 User Data 内容
+    set +x 2>/dev/null || true
+    # 将 User Data 编码为 base64（阿里云要求）
+    USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+    if [[ "${DEBUG_MODE}" == "true" ]]; then
+      set -x
+    fi
+    if [[ -z "${USER_DATA_B64}" ]]; then
+      echo "Error: Failed to encode User Data to base64" >&2
+      exit 1
+    fi
+    CMD="${CMD} --UserData ${USER_DATA_B64}"
+  fi
+  
   # 构建命令字符串（不包含 UserData，因为可能很长）
   CMD_DISPLAY="${CMD}"
   if [[ "${CMD_DISPLAY}" == *"--UserData"* ]]; then
