@@ -89,7 +89,10 @@ aliyun vpc CreateVSwitch \
 
 建议为可能命中的可用区预先建立好相应的 VPC 交换机。
 
-以阿里云华东 1（杭州）区域为例，ARM64 实例仅在 B\J\K 可用区内有效。
+**注意**：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的 VSwitch ID 变量。例如：
+- `cn-hangzhou` 可能需要配置 B/G/H/I/J/K（ARM64 实例仅在 B/J/K 可用区内有效）
+- `cn-beijing` 可能需要配置 A/B/C
+- 只需要配置实际使用的可用区的变量，未使用的可用区变量可以不配置（为空值）
 
 #### 示例：创建安全组
 
@@ -130,15 +133,45 @@ aliyun ecs AuthorizeSecurityGroup \
 | `ALIYUN_REGION_ID` | 区域 ID | cn-hangzhou |
 | `ALIYUN_SECURITY_GROUP_ID` | 安全组 ID | sg-xxx |
 | `ALIYUN_VPC_ID` | VPC ID | vpc-xxx |
+| `ALIYUN_VSWITCH_ID_A` | 可用区 `${ALIYUN_REGION_ID}-a` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_B` | 可用区 `${ALIYUN_REGION_ID}-b` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_C` | 可用区 `${ALIYUN_REGION_ID}-c` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_D` | 可用区 `${ALIYUN_REGION_ID}-d` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_E` | 可用区 `${ALIYUN_REGION_ID}-e` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_F` | 可用区 `${ALIYUN_REGION_ID}-f` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_G` | 可用区 `${ALIYUN_REGION_ID}-g` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_H` | 可用区 `${ALIYUN_REGION_ID}-h` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_I` | 可用区 `${ALIYUN_REGION_ID}-i` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_J` | 可用区 `${ALIYUN_REGION_ID}-j` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_VSWITCH_ID_K` | 可用区 `${ALIYUN_REGION_ID}-k` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_L` | 可用区 `${ALIYUN_REGION_ID}-l` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_M` | 可用区 `${ALIYUN_REGION_ID}-m` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_N` | 可用区 `${ALIYUN_REGION_ID}-n` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_O` | 可用区 `${ALIYUN_REGION_ID}-o` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_P` | 可用区 `${ALIYUN_REGION_ID}-p` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_Q` | 可用区 `${ALIYUN_REGION_ID}-q` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_R` | 可用区 `${ALIYUN_REGION_ID}-r` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_S` | 可用区 `${ALIYUN_REGION_ID}-s` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_T` | 可用区 `${ALIYUN_REGION_ID}-t` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_U` | 可用区 `${ALIYUN_REGION_ID}-u` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_V` | 可用区 `${ALIYUN_REGION_ID}-v` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_W` | 可用区 `${ALIYUN_REGION_ID}-w` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_X` | 可用区 `${ALIYUN_REGION_ID}-x` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_Y` | 可用区 `${ALIYUN_REGION_ID}-y` 的 VSwitch ID（可选） | vsw-xxx |
+| `ALIYUN_VSWITCH_ID_Z` | 可用区 `${ALIYUN_REGION_ID}-z` 的 VSwitch ID（可选） | vsw-xxx |
 | `ALIYUN_ARM64_IMAGE_ID` | ARM64 镜像 ID（推荐 Ubuntu 24） | m-xxx |
 | `ALIYUN_AMD64_IMAGE_ID` | AMD64 镜像 ID（推荐 Ubuntu 24） | m-xxx |
 | `ALIYUN_KEY_PAIR_NAME` | 用于 root 访问的 SSH 密钥对名称 | my-key-pair |
+| `MIN_CPU` | 实例最小 CPU 核心数（可选，默认 8） | 8 |
+
+**注意**：
+- 变量名已简化，去掉了架构前缀（`AMD64_`/`ARM64_`），因为工作流中已经有 `ARCH` 环境变量区分架构
+- `MIN_MEM` 会根据 `MIN_CPU` 和架构自动计算：
+  - AMD64: `MIN_MEM = MIN_CPU`（1:1 比例）
+  - ARM64: `MIN_MEM = MIN_CPU * 2`（1:2 比例）
+- `MAX_CPU` 和 `MAX_MEM` 使用脚本默认值（不需要配置）：
+  - `MAX_CPU`: 64（固定上限）
+  - `MAX_MEM`: AMD64 为 64，ARM64 为 128（固定上限）
 
 ### 3. 权限配置
 

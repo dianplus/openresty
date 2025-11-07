@@ -9,6 +9,15 @@ on:
   #   tags:
   #     - 'v*'
   workflow_dispatch:
+    inputs:
+      min_cpu:
+        description: '起始 CPU 核心数（可选，默认使用 vars.MIN_CPU 或 8）'
+        required: false
+        type: number
+      min_mem:
+        description: '起始内存 GB（可选，默认根据 min_cpu 自动计算，AMD64: 1:1）'
+        required: false
+        type: number
 
 env:
   REGISTRY: ghcr.io
@@ -62,6 +71,93 @@ jobs:
           RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}"
           echo "name=${RUNNER_NAME}" >> $GITHUB_OUTPUT
 
+      - name: Download spot-instance-advisor
+        id: download-advisor
+        run: |
+          # 下载 spot-instance-advisor 工具
+          # 从 GitHub releases 下载预构建二进制
+          # 获取最新 release 版本
+          # 回退版本 v1.0.1：从该版本开始支持 --arch 参数
+          echo "Fetching latest release version..." >&2
+          ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+          if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
+            echo "Warning: Failed to fetch latest version, using fallback: v1.0.1 (first version with --arch support)" >&2
+            ADVISOR_VERSION="v1.0.1"
+          fi
+          echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
+          echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
+          
+          # 下载二进制文件
+          ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${ADVISOR_VERSION}/spot-instance-advisor-linux-amd64"
+          echo "Downloading from: ${ADVISOR_URL}" >&2
+          curl -L -f -o spot-instance-advisor "${ADVISOR_URL}" || {
+            echo "Error: Failed to download spot-instance-advisor from releases" >&2
+            exit 1
+          }
+          chmod +x spot-instance-advisor
+          echo "advisor_path=$(pwd)/spot-instance-advisor" >> $GITHUB_OUTPUT
+          ./spot-instance-advisor --version || echo "Warning: Version check failed" >&2
+
+      - name: Select Optimal Instance
+        id: select-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ARCH: ${{ env.ARCH }}
+          SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
+          # 资源需求规格（优先级：workflow_dispatch inputs > vars > 默认值）
+          # AMD64: CPU:RAM = 1:1，默认 8c8g 到 64c64g
+          # MIN_MEM 会根据 MIN_CPU 自动计算（1:1 比例）
+          # MAX_CPU 和 MAX_MEM 使用脚本默认值（64 和 64）
+          # 注意：inputs.min_cpu 如果是 number 类型且未设置，值为空字符串 ''
+          MIN_CPU: ${{ inputs.min_cpu != '' && inputs.min_cpu || (vars.MIN_CPU != '' && vars.MIN_CPU || '') }}
+          MIN_MEM: ${{ inputs.min_mem != '' && inputs.min_mem || '' }}
+          # VSwitch ID 变量映射（根据可用区动态选择）
+          # 注意：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的变量
+          # 例如：cn-hangzhou 可能有 B/G/H/I/J/K，cn-beijing 可能有 A/B/C
+          # 预定义所有可能的可用区后缀（A-Z），未配置的变量为空值，脚本会自动跳过
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+        run: |
+          # 调用 select-instance.sh 脚本
+          OUTPUT=$(bash .github/scripts/select-instance.sh)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              # 如果是 CANDIDATES_FILE，需要导出到环境变量供后续步骤使用
+              if [[ "${key}" == "CANDIDATES_FILE" ]]; then
+                echo "${key}=${value}" >> $GITHUB_ENV
+              fi
+            fi
+          done <<< "${OUTPUT}"
+
       - name: Generate User Data
         id: user-data
         env:
@@ -89,12 +185,14 @@ jobs:
           ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
           ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
-          ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
           ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
-          INSTANCE_TYPE: ${{ vars.INSTANCE_TYPE_AMD64 }}
+          INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
           INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
           ARCH: ${{ env.ARCH }}
+          SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
+          CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
         run: |
           # 将 User Data 写入临时文件，使用单引号 heredoc，避免 bash 展开其中的 ${VAR}
           cat > /tmp/user-data.sh <<'EOF'
