@@ -223,6 +223,7 @@ jobs:
           EOF
           echo "User Data file created, size: $(wc -c < /tmp/user-data.sh) bytes"
           export USER_DATA_FILE=/tmp/user-data.sh
+          export DEBUG=true  # 启用调试模式，输出详细的 VSwitch ID 映射信息
           set -x  # 启用调试模式
           # 执行脚本并捕获输出，将标准输出和标准错误分离
           # 脚本应该只输出实例 ID 到标准输出，其他信息输出到标准错误

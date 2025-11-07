@@ -210,19 +210,8 @@ if [[ -n "${SPOT_PRICE_LIMIT}" ]]; then
   echo "Spot Price Limit: ${SPOT_PRICE_LIMIT}" >&2
 fi
 
-# 构建命令字符串（不包含 UserData，因为可能很长）
-CMD_DISPLAY="${CMD}"
-if [[ "${CMD_DISPLAY}" == *"--UserData"* ]]; then
-  # 截断 UserData 部分用于显示
-  CMD_DISPLAY=$(echo "${CMD_DISPLAY}" | sed 's/--UserData [^ ]*/--UserData <base64-encoded-data>/')
-fi
-echo "Executing command: ${CMD_DISPLAY}" >&2
-
-# 执行命令并捕获输出和错误
-# 注意：使用 eval 执行命令，确保所有参数正确传递
-echo "About to execute Aliyun CLI command..." >&2
-
 # 实现重试机制（如果有候选结果文件）
+# 注意：如果有候选结果文件，直接进入重试逻辑，不执行单次尝试
 if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
   # 读取候选结果
   CANDIDATES=()
@@ -251,8 +240,18 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
     CAND_VSWITCH_VAR="ALIYUN_VSWITCH_ID_${CAND_ZONE_SUFFIX}"
     CAND_VSWITCH_ID="${!CAND_VSWITCH_VAR:-}"
     
+    # 调试信息：输出变量名和值（如果设置了 DEBUG）
+    if [[ "${DEBUG:-}" == "true" ]]; then
+      echo "Debug: Zone ${CAND_ZONE_ID} -> Suffix ${CAND_ZONE_SUFFIX} -> Variable ${CAND_VSWITCH_VAR} -> Value ${CAND_VSWITCH_ID}" >&2
+    fi
+    
     if [[ -z "${CAND_VSWITCH_ID}" ]]; then
       echo "Warning: VSwitch ID not found for zone ${CAND_ZONE_ID} (variable: ${CAND_VSWITCH_VAR}), skipping candidate ${ATTEMPT}" >&2
+      # 如果设置了 DEBUG，输出所有可用的 VSwitch ID 变量
+      if [[ "${DEBUG:-}" == "true" ]]; then
+        echo "Debug: Available VSwitch ID variables:" >&2
+        env | grep "^ALIYUN_VSWITCH_ID_" | sort >&2 || echo "  (none found)" >&2
+      fi
       continue
     fi
     
@@ -345,6 +344,15 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
   exit 1
 else
   # 没有候选结果文件，使用原始逻辑（单次尝试）
+  # 构建命令字符串（不包含 UserData，因为可能很长）
+  CMD_DISPLAY="${CMD}"
+  if [[ "${CMD_DISPLAY}" == *"--UserData"* ]]; then
+    # 截断 UserData 部分用于显示
+    CMD_DISPLAY=$(echo "${CMD_DISPLAY}" | sed 's/--UserData [^ ]*/--UserData <base64-encoded-data>/')
+  fi
+  echo "Executing command: ${CMD_DISPLAY}" >&2
+  echo "About to execute Aliyun CLI command..." >&2
+  
   set +e  # 临时禁用 exit on error，以便捕获错误
   RESPONSE=$(eval "${CMD}" 2>&1)
   EXIT_CODE=$?
