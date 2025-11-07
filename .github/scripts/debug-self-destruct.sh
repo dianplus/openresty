@@ -178,12 +178,27 @@ if command -v aliyun &> /dev/null; then
         # 只查询实例信息，不删除
         RESPONSE=$(aliyun ecs DescribeInstances \
             --RegionId "${REGION_ID}" \
-            --InstanceIds "[\"${INSTANCE_ID}\"]" \
-            --query "Instances.Instance[0].Status" \
-            --output text 2>&1 || echo "ERROR")
+            --InstanceIds "[\"${INSTANCE_ID}\"]" 2>&1 || echo "ERROR")
         
         if [[ "${RESPONSE}" != "ERROR" && -n "${RESPONSE}" ]]; then
-            echo "   ✓ 可以访问 ECS API，实例状态: ${RESPONSE}"
+            # 尝试使用 jq 解析 JSON（如果可用）
+            if command -v jq &> /dev/null; then
+                STATUS=$(echo "${RESPONSE}" | jq -r '.Instances.Instance[0].Status' 2>/dev/null || echo "")
+                if [[ -n "${STATUS}" && "${STATUS}" != "null" ]]; then
+                    echo "   ✓ 可以访问 ECS API，实例状态: ${STATUS}"
+                else
+                    echo "   ✓ 可以访问 ECS API（响应格式可能不正确）"
+                    echo "   响应前 200 字符: ${RESPONSE:0:200}..."
+                fi
+            else
+                # 如果没有 jq，检查响应是否包含 JSON
+                if echo "${RESPONSE}" | grep -q "InstanceId"; then
+                    echo "   ✓ 可以访问 ECS API（响应包含实例信息）"
+                else
+                    echo "   ⚠ 可以访问 ECS API，但响应格式可能不正确"
+                    echo "   响应前 200 字符: ${RESPONSE:0:200}..."
+                fi
+            fi
         else
             echo "   ✗ 无法访问 ECS API"
             echo "   错误信息: ${RESPONSE}"

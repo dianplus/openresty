@@ -79,6 +79,11 @@ if [[ -n "${NO_PROXY}" ]]; then
   USER_DATA=$(echo "${USER_DATA}" | sed "s|NO_PROXY=\"\${NO_PROXY:-.*}\"|NO_PROXY=\"${NO_PROXY_ESC}\"|")
 fi
 
+if [[ -n "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" ]]; then
+  ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME_ESC=$(echo "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  USER_DATA=$(echo "${USER_DATA}" | sed "s|ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME=\"\${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}\"|ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME=\"${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME_ESC}\"|")
+fi
+
 # 输出生成的 User Data
 echo "${USER_DATA}"
 
