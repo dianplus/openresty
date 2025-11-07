@@ -160,6 +160,8 @@ echo "Writing runner environment file: ${RUNNER_DIR}/.env"
   echo "http_proxy=${HTTP_PROXY}"
   echo "https_proxy=${HTTPS_PROXY}"
   echo "no_proxy=${NO_PROXY}"
+  # 配置 post-job hook（必须在服务启动前配置）
+  echo "export ACTIONS_RUNNER_HOOK_POST_JOB=\"${RUNNER_DIR}/post-job-hook.sh\""
 } > "${RUNNER_DIR}/.env"
 chmod 600 "${RUNNER_DIR}/.env" || true
 ./svc.sh install root
@@ -277,7 +279,7 @@ fi
 # 创建 systemd service，在 Runner 服务停止后执行自毁脚本
 echo "=== Creating self-destruct systemd service ==="
 # 使用 Runner 的 post-job hook 更可靠
-# 创建 post-job hook 脚本
+# 创建 post-job hook 脚本（必须在 Runner 服务启动前创建）
 cat > "${RUNNER_DIR}/post-job-hook.sh" << 'HOOK_EOF'
 #!/bin/bash
 # Runner post-job hook
@@ -287,9 +289,7 @@ HOOK_EOF
 
 chmod +x "${RUNNER_DIR}/post-job-hook.sh"
 
-# 配置 Runner 使用 post-job hook
-# 通过环境变量配置 post-job hook
-echo "export ACTIONS_RUNNER_HOOK_POST_JOB=\"${RUNNER_DIR}/post-job-hook.sh\"" >> "${RUNNER_DIR}/.env"
+# 注意：post-job hook 的环境变量已经在 .env 文件中配置（在 Runner 服务启动前）
 
 # 同时创建 systemd service 作为备用机制
 cat > /etc/systemd/system/self-destruct.service << 'SERVICE_EOF'
@@ -300,6 +300,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# 等待 Runner 服务停止后执行自毁脚本
 ExecStart=/bin/bash -c 'while systemctl is-active --quiet actions.runner.*.service 2>/dev/null; do sleep 5; done; /usr/local/bin/self-destruct.sh'
 StandardOutput=journal
 StandardError=journal
@@ -309,11 +310,12 @@ EnvironmentFile=/etc/environment
 WantedBy=multi-user.target
 SERVICE_EOF
 
-# 启用服务（但不立即启动，等待 Runner 服务停止）
+# 启用并启动服务（作为备用机制）
 systemctl daemon-reload
 systemctl enable self-destruct.service
+systemctl start self-destruct.service
 
-echo "Self-destruct service created and enabled"
+echo "Self-destruct service created, enabled and started"
 echo "Post-job hook configured at ${RUNNER_DIR}/post-job-hook.sh"
 echo "Instance will be automatically deleted when Runner service stops or job completes"
 
