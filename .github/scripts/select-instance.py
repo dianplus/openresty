@@ -217,29 +217,33 @@ def main():
         os.chmod(advisor_binary, 0o755)
 
     # 根据架构设置查询参数
+    # 处理空字符串的情况（GitHub Actions workflow_dispatch inputs 可能返回空字符串）
+    min_cpu_str = os.environ.get("MIN_CPU", "").strip()
+    min_cpu = int(min_cpu_str) if min_cpu_str else 8
+    
+    max_cpu_str = os.environ.get("MAX_CPU", "").strip()
+    max_cpu = int(max_cpu_str) if max_cpu_str else 64
+    
+    min_mem_str = os.environ.get("MIN_MEM", "").strip()
+    max_mem_str = os.environ.get("MAX_MEM", "").strip()
+    
     if arch == "amd64":
-        min_cpu = int(os.environ.get("MIN_CPU", "8"))
-        max_cpu = int(os.environ.get("MAX_CPU", "64"))
-        min_mem_str = os.environ.get("MIN_MEM")
         if min_mem_str:
             min_mem = int(min_mem_str)
         else:
             min_mem = min_cpu  # 1:1
-        max_mem = int(os.environ.get("MAX_MEM", "64"))
+        max_mem = int(max_mem_str) if max_mem_str else 64
         arch_param = "x86_64"
         print(
             f"Info: Querying for AMD64 instances (CPU:RAM = 1:1, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
             file=sys.stderr,
         )
     else:  # arm64
-        min_cpu = int(os.environ.get("MIN_CPU", "8"))
-        max_cpu = int(os.environ.get("MAX_CPU", "64"))
-        min_mem_str = os.environ.get("MIN_MEM")
         if min_mem_str:
             min_mem = int(min_mem_str)
         else:
             min_mem = min_cpu * 2  # 1:2
-        max_mem = int(os.environ.get("MAX_MEM", "128"))
+        max_mem = int(max_mem_str) if max_mem_str else 128
         arch_param = "arm64"
         print(
             f"Info: Querying for ARM64 instances (CPU:RAM = 1:2, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
