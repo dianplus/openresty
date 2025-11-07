@@ -41,7 +41,7 @@
 ### 迭代 6：动态实例选择 ✅
 
 - ✅ 集成 `spot-instance-advisor` 工具，自动获取最新版本（v1.0.1 作为回退版本）
-- ✅ 创建动态实例选择脚本 (`.github/scripts/select-instance.py`)，使用 Python 实现
+- ✅ 创建动态实例选择脚本 (`.github/scripts/select-instance.py`)
   - 支持 AMD64 和 ARM64 架构查询
   - AMD64: CPU:RAM = 1:1，8c8g 到 64c64g
   - ARM64: CPU:RAM = 1:2，8c16g 到 64c128g
@@ -59,7 +59,7 @@
 - ✅ 创建 `write-user-data.py` 脚本
   - 从环境变量读取 base64 编码的 User Data
   - 解码并写入文件，避免在日志中暴露敏感信息
-- ✅ 更新 `create-spot-instance.py`（Python 实现）
+- ✅ 更新 `create-spot-instance.py`
   - 支持从候选结果文件读取并重试
   - 动态设置 Spot 策略（根据价格限制）
   - 添加 Aliyun CLI 配置验证
@@ -73,23 +73,24 @@
 
 ## 待完成迭代
 
-### 迭代 8：并行度优化
+### 迭代 8：并行度优化 ✅
 
 **目标**：根据实例 CPU 核心数动态设置 `RESTY_J` 并行度，充分利用 CPU 资源。
 
 **任务**：
 
-1. 从实例类型提取 CPU 核心数（已在 select-instance.py 中实现）
+1. ✅ 从实例类型提取 CPU 核心数（已在 select-instance.py 中实现）
    - 从 JSON 结果中提取 CPU 核心数
    - 或从实例类型名称解析核心数（如 `ecs.c7.2xlarge` → 8 核）
 
-2. 传递 CPU 核心数到构建步骤
-   - 在 `setup` job 输出 CPU 核心数
-   - 在 `build` job 中使用该值设置 `RESTY_J`
+2. ✅ 传递 CPU 核心数到构建步骤
+   - 在 `setup` job 的 `Select Optimal Instance` 步骤中，`select-instance.py` 已输出 `CPU_CORES`
+   - 工作流自动解析并设置到 `$GITHUB_OUTPUT`
+   - 在 `build` job 中使用 `${{ needs.setup.outputs.CPU_CORES }}` 设置 `RESTY_J`
 
-3. 更新构建步骤
+3. ✅ 更新构建步骤
    - 在 `build-amd64.yml` 和 `build-arm64.yml` 的 `build` job 中
-   - 将 `RESTY_J=8` 改为 `RESTY_J=${{ needs.setup.outputs.cpu_cores }}`
+   - 将 `RESTY_J=8` 改为 `RESTY_J=${{ needs.setup.outputs.CPU_CORES }}`
 
 **相关文件**：
 
@@ -177,7 +178,7 @@
 - 使用 `spot-instance-advisor` 工具查询价格
 - 支持多可用区回退机制
 - Spot 价格限制为最低总价的 120%
-- 使用 Python 实现，支持渐进式查询策略
+- 支持渐进式查询策略
 - 候选文件包含 VSwitch ID 和 Spot Price Limit，避免重复计算
 
 ### 并行度优化
@@ -221,7 +222,7 @@
 ### 迭代 6：动态实例选择 ✅
 
 - [x] 集成 spot-instance-advisor 工具，在工作流中下载或使用预构建的二进制文件
-- [x] 创建动态实例选择脚本 (.github/scripts/select-instance.py)，使用 Python 实现，支持 AMD64 和 ARM64 架构查询
+- [x] 创建动态实例选择脚本 (.github/scripts/select-instance.py)，支持 AMD64 和 ARM64 架构查询
 - [x] 更新 build-amd64.yml 和 build-arm64.yml 使用动态实例选择，替换固定的 INSTANCE_TYPE 和 VSWITCH_ID
 - [x] 实现 Spot 价格限制（最低总价的 120%），更新 create-spot-instance.py
 - [x] 创建 write-user-data.py 脚本，使用 base64 编码传递 User Data
@@ -229,10 +230,11 @@
 - [x] 添加查询时间统计
 - [x] 处理空字符串输入问题
 
-### 迭代 8：并行度优化
+### 迭代 8：并行度优化 ✅
 
-- [ ] 从实例类型提取 CPU 核心数（已在 select-instance.py 中实现，需要传递到构建步骤）
-- [ ] 更新构建工作流，使用动态 CPU 核心数设置 RESTY_J 并行度
+- [x] 从实例类型提取 CPU 核心数（已在 select-instance.py 中实现）
+- [x] 在 setup job 中捕获 CPU_CORES 并输出到 GitHub Actions outputs
+- [x] 更新构建工作流，使用动态 CPU 核心数设置 RESTY_J 并行度
 
 ### 迭代 9：多架构合并自动化
 

@@ -353,7 +353,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            RESTY_J=8
+            RESTY_J=${{ needs.setup.outputs.CPU_CORES }}
             HTTP_PROXY=${{ env.HTTP_PROXY }}
             HTTPS_PROXY=${{ env.HTTPS_PROXY }}
             NO_PROXY=${{ env.NO_PROXY }}
