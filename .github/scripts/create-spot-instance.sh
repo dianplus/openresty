@@ -151,6 +151,8 @@ else
   CMD="${CMD} --SpotStrategy SpotAsPriceGo"
 fi
 
+# 注意：User Data 的 base64 编码将在单次尝试或重试循环内部进行，避免不必要的提前编码
+
 # 添加 User Data（如果提供）
 # 优先使用文件方式，避免环境变量传递多行脚本的问题
 if [[ -n "${USER_DATA_FILE}" && -f "${USER_DATA_FILE}" ]]; then
@@ -178,20 +180,7 @@ if [[ -n "${USER_DATA}" ]]; then
   fi
 fi
 
-# 编码 User Data 为 base64（在重试逻辑之前完成，供所有候选结果使用）
-if [[ -n "${USER_DATA}" ]]; then
-  # 将 User Data 编码为 base64（阿里云要求）
-  echo "Encoding User Data to base64..." >&2
-  USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
-  if [[ -z "${USER_DATA_B64}" ]]; then
-    echo "Error: Failed to encode User Data to base64" >&2
-    exit 1
-  fi
-  echo "User Data encoded successfully (${#USER_DATA_B64} bytes)" >&2
-  CMD="${CMD} --UserData ${USER_DATA_B64}"
-else
-  USER_DATA_B64=""
-fi
+# 注意：User Data 的 base64 编码将在重试循环内部进行，避免不必要的提前编码
 
 # 执行创建实例命令
 echo "=== Creating Spot Instance ===" >&2
@@ -303,8 +292,15 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
     fi
     
     # 添加 User Data（如果提供）
-    if [[ -n "${USER_DATA_B64}" ]]; then
-      CMD_CAND="${CMD_CAND} --UserData ${USER_DATA_B64}"
+    # 在每次尝试时进行 base64 编码，避免不必要的提前编码
+    if [[ -n "${USER_DATA}" ]]; then
+      # 将 User Data 编码为 base64（阿里云要求）
+      CAND_USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+      if [[ -z "${CAND_USER_DATA_B64}" ]]; then
+        echo "Error: Failed to encode User Data to base64 for candidate ${ATTEMPT}" >&2
+        continue
+      fi
+      CMD_CAND="${CMD_CAND} --UserData ${CAND_USER_DATA_B64}"
     fi
     
     # 执行命令

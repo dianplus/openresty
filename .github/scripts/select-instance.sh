@@ -155,17 +155,74 @@ if [[ "${USE_JQ}" == "true" ]]; then
   # 提取所有候选结果（按价格排序，已由工具完成）
   # 输出格式：每行一个候选结果，格式为 "INSTANCE_TYPE|ZONE_ID|PRICE_PER_CORE|CPU_CORES"
   # 支持多种字段名格式：snake_case, PascalCase, camelCase
+  # 过滤结果：只保留符合 MIN_CPU 和 MIN_MEM 要求的实例
   CANDIDATES_FILE=$(mktemp)
-  for ((i=0; i<ARRAY_LENGTH; i++)); do
+  CANDIDATE_COUNT=0
+  MAX_CANDIDATES=5
+  
+  # 从 JSON 结果中提取内存信息（用于过滤）
+  for ((i=0; i<$(echo "${JSON_RESULT}" | jq 'length'); i++)); do
     INSTANCE_TYPE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].instanceTypeId // .[${i}].instance_type // .[${i}].InstanceType // empty")
     ZONE_ID=$(echo "${JSON_RESULT}" | jq -r ".[${i}].zoneId // .[${i}].zone_id // .[${i}].ZoneId // empty")
     PRICE_PER_CORE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].pricePerCore // .[${i}].price_per_core // .[${i}].PricePerCore // .[${i}].price // .[${i}].Price // empty")
     CPU_CORES=$(echo "${JSON_RESULT}" | jq -r ".[${i}].cpuCoreCount // .[${i}].cpu_cores // .[${i}].CpuCores // .[${i}].cores // .[${i}].Cores // empty")
+    MEMORY_SIZE=$(echo "${JSON_RESULT}" | jq -r ".[${i}].memorySize // .[${i}].memory_size // .[${i}].MemorySize // .[${i}].memory // .[${i}].Memory // empty")
     
-    if [[ -n "${INSTANCE_TYPE}" && -n "${ZONE_ID}" && -n "${PRICE_PER_CORE}" ]]; then
+    # 验证必需字段
+    if [[ -z "${INSTANCE_TYPE}" || -z "${ZONE_ID}" || -z "${PRICE_PER_CORE}" ]]; then
+      continue
+    fi
+    
+    # 如果无法从 JSON 提取 CPU 核心数，尝试从实例类型名称解析
+    if [[ -z "${CPU_CORES}" ]]; then
+      if [[ "${INSTANCE_TYPE}" =~ \.([0-9]+)xlarge$ ]]; then
+        MULTIPLIER="${BASH_REMATCH[1]}"
+        CPU_CORES=$((MULTIPLIER * 4))
+      elif [[ "${INSTANCE_TYPE}" =~ \.xlarge$ ]]; then
+        CPU_CORES=4
+      elif [[ "${INSTANCE_TYPE}" =~ \.large$ ]]; then
+        CPU_CORES=2
+      elif [[ "${INSTANCE_TYPE}" =~ \.medium$ ]]; then
+        CPU_CORES=2
+      else
+        # 如果无法解析，跳过该实例
+        echo "Warning: Could not determine CPU cores from instance type ${INSTANCE_TYPE}, skipping" >&2
+        continue
+      fi
+    fi
+    
+    # 如果无法从 JSON 提取内存大小，尝试从实例类型名称解析（仅作为备选）
+    if [[ -z "${MEMORY_SIZE}" ]]; then
+      # 根据架构和 CPU 核心数估算内存（仅用于过滤，不用于实际选择）
+      if [[ "${ARCH}" == "amd64" ]]; then
+        # AMD64: CPU:RAM = 1:1
+        MEMORY_SIZE="${CPU_CORES}"
+      elif [[ "${ARCH}" == "arm64" ]]; then
+        # ARM64: CPU:RAM = 1:2
+        MEMORY_SIZE=$((CPU_CORES * 2))
+      fi
+    fi
+    
+    # 过滤：只保留符合 MIN_CPU 和 MIN_MEM 要求的实例
+    if [[ ${CPU_CORES} -lt ${MIN_CPU} ]] || [[ ${MEMORY_SIZE} -lt ${MIN_MEM} ]]; then
+      echo "Info: Skipping instance ${INSTANCE_TYPE} (${CPU_CORES}c${MEMORY_SIZE}g) - below minimum requirements (${MIN_CPU}c${MIN_MEM}g)" >&2
+      continue
+    fi
+    
+    # 添加到候选列表
+    if [[ ${CANDIDATE_COUNT} -lt ${MAX_CANDIDATES} ]]; then
       echo "${INSTANCE_TYPE}|${ZONE_ID}|${PRICE_PER_CORE}|${CPU_CORES}" >> "${CANDIDATES_FILE}"
+      CANDIDATE_COUNT=$((CANDIDATE_COUNT + 1))
+    else
+      # 已达到最大候选数量
+      break
     fi
   done
+  
+  # 检查是否有有效的候选结果
+  if [[ ${CANDIDATE_COUNT} -eq 0 ]]; then
+    error_exit "No instances found matching minimum requirements (${MIN_CPU}c${MIN_MEM}g)"
+  fi
 
   # 提取第一个结果（价格最优）
   FIRST_CANDIDATE=$(head -1 "${CANDIDATES_FILE}")
@@ -220,23 +277,81 @@ else
     [[ -n "${line}" ]] && CPU_CORES_ARRAY+=("${line}")
   done <<< "${CPU_CORES_LIST}"
   
+  # 提取内存信息（用于过滤）
+  MEMORY_SIZES=$(echo "${JSON_RESULT}" | grep -o '"memorySize":[0-9.]*' | cut -d':' -f2 || \
+                 echo "${JSON_RESULT}" | grep -o '"memory_size":[0-9.]*' | cut -d':' -f2 || \
+                 echo "${JSON_RESULT}" | grep -o '"MemorySize":[0-9.]*' | cut -d':' -f2 || \
+                 echo "${JSON_RESULT}" | grep -o '"memory":[0-9.]*' | cut -d':' -f2 || echo "")
+  MEMORY_SIZE_ARRAY=()
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && MEMORY_SIZE_ARRAY+=("${line}")
+  done <<< "${MEMORY_SIZES}"
+  
   # 组合候选结果（取最小长度，确保所有数组都有对应值）
   MIN_LENGTH=${#INSTANCE_TYPE_ARRAY[@]}
   [[ ${#ZONE_ID_ARRAY[@]} -lt ${MIN_LENGTH} ]] && MIN_LENGTH=${#ZONE_ID_ARRAY[@]}
   [[ ${#PRICE_PER_CORE_ARRAY[@]} -lt ${MIN_LENGTH} ]] && MIN_LENGTH=${#PRICE_PER_CORE_ARRAY[@]}
-  [[ ${MIN_LENGTH} -gt ${MAX_CANDIDATES} ]] && MIN_LENGTH=${MAX_CANDIDATES}
   
-  for ((i=0; i<MIN_LENGTH && i<MAX_CANDIDATES; i++)); do
+  CANDIDATE_COUNT=0
+  MAX_CANDIDATES=5
+  
+  for ((i=0; i<MIN_LENGTH && CANDIDATE_COUNT<MAX_CANDIDATES; i++)); do
     INSTANCE_TYPE="${INSTANCE_TYPE_ARRAY[$i]}"
     ZONE_ID="${ZONE_ID_ARRAY[$i]}"
     PRICE_PER_CORE="${PRICE_PER_CORE_ARRAY[$i]}"
     CPU_CORES="${CPU_CORES_ARRAY[$i]:-}"
+    MEMORY_SIZE="${MEMORY_SIZE_ARRAY[$i]:-}"
     
-    if [[ -n "${INSTANCE_TYPE}" && -n "${ZONE_ID}" && -n "${PRICE_PER_CORE}" ]]; then
-      echo "${INSTANCE_TYPE}|${ZONE_ID}|${PRICE_PER_CORE}|${CPU_CORES}" >> "${CANDIDATES_FILE}"
-      CANDIDATE_COUNT=$((CANDIDATE_COUNT + 1))
+    # 验证必需字段
+    if [[ -z "${INSTANCE_TYPE}" || -z "${ZONE_ID}" || -z "${PRICE_PER_CORE}" ]]; then
+      continue
     fi
+    
+    # 如果无法从 JSON 提取 CPU 核心数，尝试从实例类型名称解析
+    if [[ -z "${CPU_CORES}" ]]; then
+      if [[ "${INSTANCE_TYPE}" =~ \.([0-9]+)xlarge$ ]]; then
+        MULTIPLIER="${BASH_REMATCH[1]}"
+        CPU_CORES=$((MULTIPLIER * 4))
+      elif [[ "${INSTANCE_TYPE}" =~ \.xlarge$ ]]; then
+        CPU_CORES=4
+      elif [[ "${INSTANCE_TYPE}" =~ \.large$ ]]; then
+        CPU_CORES=2
+      elif [[ "${INSTANCE_TYPE}" =~ \.medium$ ]]; then
+        CPU_CORES=2
+      else
+        # 如果无法解析，跳过该实例
+        echo "Warning: Could not determine CPU cores from instance type ${INSTANCE_TYPE}, skipping" >&2
+        continue
+      fi
+    fi
+    
+    # 如果无法从 JSON 提取内存大小，尝试从实例类型名称解析（仅作为备选）
+    if [[ -z "${MEMORY_SIZE}" ]]; then
+      # 根据架构和 CPU 核心数估算内存（仅用于过滤，不用于实际选择）
+      if [[ "${ARCH}" == "amd64" ]]; then
+        # AMD64: CPU:RAM = 1:1
+        MEMORY_SIZE="${CPU_CORES}"
+      elif [[ "${ARCH}" == "arm64" ]]; then
+        # ARM64: CPU:RAM = 1:2
+        MEMORY_SIZE=$((CPU_CORES * 2))
+      fi
+    fi
+    
+    # 过滤：只保留符合 MIN_CPU 和 MIN_MEM 要求的实例
+    if [[ ${CPU_CORES} -lt ${MIN_CPU} ]] || [[ ${MEMORY_SIZE} -lt ${MIN_MEM} ]]; then
+      echo "Info: Skipping instance ${INSTANCE_TYPE} (${CPU_CORES}c${MEMORY_SIZE}g) - below minimum requirements (${MIN_CPU}c${MIN_MEM}g)" >&2
+      continue
+    fi
+    
+    # 添加到候选列表
+    echo "${INSTANCE_TYPE}|${ZONE_ID}|${PRICE_PER_CORE}|${CPU_CORES}" >> "${CANDIDATES_FILE}"
+    CANDIDATE_COUNT=$((CANDIDATE_COUNT + 1))
   done
+  
+  # 检查是否有有效的候选结果
+  if [[ ${CANDIDATE_COUNT} -eq 0 ]]; then
+    error_exit "No instances found matching minimum requirements (${MIN_CPU}c${MIN_MEM}g)"
+  fi
   
   # 提取第一个结果（价格最优）
   FIRST_CANDIDATE=$(head -1 "${CANDIDATES_FILE}")
