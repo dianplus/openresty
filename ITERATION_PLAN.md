@@ -171,6 +171,56 @@
 - `.github/workflows/build-amd64.yml` (修改)
 - `.github/workflows/build-arm64.yml` (修改)
 
+### 迭代 11：自定义镜像构建 ✅
+
+**目标**：创建独立的工作流，基于阿里云 Ubuntu 24 最新镜像构建预装工具的自定义镜像（AMD64 和 ARM64），支持每日自动构建，使用 RAM 角色授权，并保存到 ECS 自定义镜像和镜像市场。
+
+**任务**：
+
+1. ✅ 创建镜像查询脚本
+   - 使用 Aliyun CLI 查询指定 region 中 Ubuntu 24 的最新镜像
+   - 支持 AMD64 和 ARM64 架构筛选
+   - 返回镜像 ID、名称、创建时间、版本信息等
+   - 生成版本标识（基于镜像 ID 和创建时间）
+
+2. ✅ 创建镜像构建脚本
+   - 创建临时 ECS 实例（基于查询到的最新 Ubuntu 24 镜像）
+   - 通过 User Data 安装预装工具：
+     - 基础工具：`curl`, `wget`, `git`, `jq`
+     - Aliyun CLI（最新版本）
+     - spot-instance-advisor（最新版本）
+     - GitHub Actions Runner（预装但未配置，下载到 `/opt/actions-runner`）
+   - 等待实例就绪和工具安装完成
+   - 创建自定义镜像（`aliyun ecs CreateImage`）
+   - 等待镜像创建完成（轮询镜像状态）
+   - 清理临时实例
+   - 实现版本检查逻辑：如果工具或基础镜像版本未变更，则跳过构建
+
+3. ✅ 创建镜像发布脚本（可选）
+   - 将自定义镜像发布到阿里云镜像市场
+   - 支持公开或私有发布
+   - 支持共享给特定账号
+
+4. ✅ 创建工作流文件
+   - 配置每日自动构建（UTC 时间 02:00，北京时间 10:00）
+   - 支持手动触发（可强制构建）
+   - 并行构建 AMD64 和 ARM64 镜像
+   - 使用 RAM 角色授权（构建镜像时不需要，使用镜像时才需要）
+
+**技术要点**：
+
+- **版本检查**：基于基础镜像 ID 和创建时间生成版本哈希，检查是否已存在相同版本的自定义镜像
+- **工具版本**：Aliyun CLI 和 spot-instance-advisor 自动获取最新版本，GitHub Actions Runner 使用可配置版本
+- **RAM 角色**：构建镜像时不需要绑定 RAM 角色（工具安装不需要访问阿里云 API），使用镜像时才需要绑定
+- **镜像命名**：包含架构信息、时间戳和版本哈希标签
+
+**相关文件**：
+
+- `.github/scripts/query-ubuntu-image.py` (新建)
+- `.github/scripts/build-custom-image.py` (新建)
+- `.github/scripts/publish-image-to-marketplace.py` (新建)
+- `.github/workflows/build-custom-images.yml` (新建)
+
 ## 技术要点
 
 ### 动态实例选择
@@ -250,3 +300,11 @@
 
 - [ ] 启用 push 触发器，支持 develop 和 master 分支自动触发构建
 - [ ] 启用 tags 触发器，支持 v* 版本标签自动触发构建
+
+### 迭代 11：自定义镜像构建 ✅
+
+- [x] 创建 query-ubuntu-image.py 脚本，查询阿里云 Ubuntu 24 最新镜像
+- [x] 创建 build-custom-image.py 脚本，构建自定义镜像（包含工具安装逻辑）
+- [x] 创建 publish-image-to-marketplace.py 脚本，发布镜像到市场（可选）
+- [x] 创建 build-custom-images.yml 工作流，配置每日自动构建和手动触发
+- [x] 实现版本检查逻辑，如果工具或基础镜像版本未变更，则跳过构建
