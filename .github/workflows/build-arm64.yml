@@ -144,6 +144,7 @@ jobs:
           OUTPUT=$(python3 .github/scripts/select-instance.py)
           
           # 解析输出并设置 GitHub Actions 输出
+          CPU_CORES_DEFAULT=8  # 默认值，防止 CPU_CORES 为空
           while IFS='=' read -r key value; do
             if [[ -n "${key}" && -n "${value}" ]]; then
               echo "${key}=${value}" >> $GITHUB_OUTPUT
@@ -151,8 +152,18 @@ jobs:
               if [[ "${key}" == "CANDIDATES_FILE" ]]; then
                 echo "${key}=${value}" >> $GITHUB_ENV
               fi
+              # 如果是 CPU_CORES，更新默认值
+              if [[ "${key}" == "CPU_CORES" ]]; then
+                CPU_CORES_DEFAULT="${value}"
+              fi
             fi
           done <<< "${OUTPUT}"
+          
+          # 确保 CPU_CORES 有值（如果脚本没有输出，使用默认值）
+          if ! grep -q "^CPU_CORES=" $GITHUB_OUTPUT 2>/dev/null; then
+            echo "CPU_CORES=${CPU_CORES_DEFAULT}" >> $GITHUB_OUTPUT
+            echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
+          fi
 
       - name: Generate User Data
         id: user-data
@@ -353,7 +364,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            RESTY_J=${{ needs.setup.outputs.CPU_CORES }}
+            RESTY_J=${{ needs.setup.outputs.CPU_CORES || '8' }}
             HTTP_PROXY=${{ env.HTTP_PROXY }}
             HTTPS_PROXY=${{ env.HTTPS_PROXY }}
             NO_PROXY=${{ env.NO_PROXY }}
