@@ -126,6 +126,75 @@ def calculate_spot_price_limit(
     return default_limit
 
 
+def get_supported_disk_category(
+    region_id: str, instance_type: str, zone_id: Optional[str] = None
+) -> str:
+    """获取实例类型支持的系统盘类型（降级策略）"""
+    # 磁盘类型优先级：cloud_essd -> cloud_ssd -> cloud_efficiency
+    disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
+
+    # 如果没有指定可用区，尝试查询（可选）
+    if not zone_id:
+        # 先尝试查询实例类型支持的磁盘类型
+        try:
+            cmd = [
+                "aliyun",
+                "ecs",
+                "DescribeAvailableResource",
+                "--RegionId",
+                region_id,
+                "--InstanceType",
+                instance_type,
+                "--DestinationResource",
+                "SystemDisk",
+            ]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True, timeout=30
+            )
+            data = json.loads(result.stdout)
+
+            # 解析支持的磁盘类型
+            if (
+                "AvailableZones" in data
+                and "AvailableZone" in data["AvailableZones"]
+                and len(data["AvailableZones"]["AvailableZone"]) > 0
+            ):
+                zone = data["AvailableZones"]["AvailableZone"][0]
+                if (
+                    "AvailableResources" in zone
+                    and "AvailableResource" in zone["AvailableResources"]
+                    and len(zone["AvailableResources"]["AvailableResource"]) > 0
+                ):
+                    resource = zone["AvailableResources"]["AvailableResource"][0]
+                    if (
+                        "SupportedResources" in resource
+                        and "SupportedResource" in resource["SupportedResources"]
+                    ):
+                        supported = resource["SupportedResources"]["SupportedResource"]
+                        supported_categories = [
+                            r.get("Value", "") for r in supported if r.get("Value", "")
+                        ]
+
+                        # 按优先级选择第一个支持的磁盘类型
+                        for category in disk_categories:
+                            if category in supported_categories:
+                                print(
+                                    f"Instance type {instance_type} supports disk category: {category}",
+                                    file=sys.stderr,
+                                )
+                                return category
+
+        except (subprocess.SubprocessError, json.JSONDecodeError, KeyError) as e:
+            print(
+                f"Warning: Failed to query supported disk categories: {e}",
+                file=sys.stderr,
+            )
+
+    # 如果查询失败，使用降级策略：尝试创建实例，如果失败则降级
+    # 这里先返回 cloud_essd，如果创建失败，调用方可以重试其他类型
+    return "cloud_essd"
+
+
 def create_instance(
     region_id: str,
     image_id: str,
@@ -138,8 +207,13 @@ def create_instance(
     spot_strategy: str = "SpotAsPriceGo",
     spot_price_limit: Optional[str] = None,
     user_data_b64: Optional[str] = None,
+    system_disk_category: Optional[str] = None,
 ) -> Tuple[int, str]:
     """创建 ECS 实例"""
+    # 如果没有指定磁盘类型，自动检测
+    if not system_disk_category:
+        system_disk_category = get_supported_disk_category(region_id, instance_type)
+
     cmd = [
         "aliyun",
         "ecs",
@@ -159,7 +233,7 @@ def create_instance(
         "--InstanceChargeType",
         "PostPaid",
         "--SystemDisk.Category",
-        "cloud_essd",
+        system_disk_category,
         "--SecurityEnhancementStrategy",
         "Deactive",
         "--Tag.1.Key",
@@ -317,39 +391,67 @@ def main():
                 "SpotWithPriceLimit" if cand_spot_price_limit else "SpotAsPriceGo"
             )
 
-            # 创建实例
-            exit_code, response = create_instance(
-                region_id=region_id,
-                image_id=image_id,
-                instance_type=cand_instance_type,
-                security_group_id=security_group_id,
-                vswitch_id=cand_vswitch_id,
-                instance_name=instance_name,
-                key_pair_name=key_pair_name,
-                ram_role_name=ram_role_name,
-                spot_strategy=spot_strategy,
-                spot_price_limit=cand_spot_price_limit,
-                user_data_b64=user_data_b64,
-            )
+            # 创建实例（支持磁盘类型降级）
+            disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
+            instance_created = False
 
-            # 检查是否成功
-            if exit_code == 0 and response:
-                instance_id = extract_instance_id(response)
-                if instance_id and instance_id != "null":
-                    print(
-                        f"Spot instance created successfully on attempt {attempt}: {instance_id}",
-                        file=sys.stderr,
-                    )
-                    print(f"Instance Type: {cand_instance_type}", file=sys.stderr)
-                    print(f"Zone: {cand_zone_id}", file=sys.stderr)
-                    print(f"VSwitch: {cand_vswitch_id}", file=sys.stderr)
-                    print(instance_id)
-                    sys.exit(0)
+            for disk_category in disk_categories:
+                print(
+                    f"Attempting to create instance with disk category: {disk_category}",
+                    file=sys.stderr,
+                )
+                exit_code, response = create_instance(
+                    region_id=region_id,
+                    image_id=image_id,
+                    instance_type=cand_instance_type,
+                    security_group_id=security_group_id,
+                    vswitch_id=cand_vswitch_id,
+                    instance_name=instance_name,
+                    key_pair_name=key_pair_name,
+                    ram_role_name=ram_role_name,
+                    spot_strategy=spot_strategy,
+                    spot_price_limit=cand_spot_price_limit,
+                    user_data_b64=user_data_b64,
+                    system_disk_category=disk_category,
+                )
 
-            # 如果失败，记录错误并继续下一个候选
-            print(f"Attempt {attempt} failed (exit code: {exit_code})", file=sys.stderr)
-            if response:
-                print(f"Response: {response[:500]}...", file=sys.stderr)
+                # 检查是否成功
+                if exit_code == 0 and response:
+                    instance_id = extract_instance_id(response)
+                    if instance_id and instance_id != "null":
+                        print(
+                            f"Spot instance created successfully on attempt {attempt} with disk category: {disk_category}",
+                            file=sys.stderr,
+                        )
+                        print(f"Instance Type: {cand_instance_type}", file=sys.stderr)
+                        print(f"Zone: {cand_zone_id}", file=sys.stderr)
+                        print(f"VSwitch: {cand_vswitch_id}", file=sys.stderr)
+                        instance_created = True
+                        print(instance_id)
+                        sys.exit(0)
+                    else:
+                        # 尝试下一个磁盘类型
+                        print(
+                            f"Failed to extract instance ID, trying next disk category...",
+                            file=sys.stderr,
+                        )
+                else:
+                    # 检查错误信息，如果是磁盘类型不支持，尝试下一个
+                    if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                        print(
+                            f"Disk category {disk_category} not supported, trying next...",
+                            file=sys.stderr,
+                        )
+                        continue
+                    else:
+                        # 其他错误，不继续尝试
+                        break
+
+            # 如果所有磁盘类型都失败了，记录错误并继续下一个候选
+            if not instance_created:
+                print(f"Attempt {attempt} failed: All disk categories failed", file=sys.stderr)
+                if response:
+                    print(f"Response: {response[:500]}...", file=sys.stderr)
 
         # 所有候选结果都失败了
         error_exit(f"Failed to create Spot instance after {candidate_count} attempts")
@@ -376,43 +478,68 @@ def main():
         print(f"Executing command: {cmd_display}", file=sys.stderr)
         print("About to execute Aliyun CLI command...", file=sys.stderr)
 
-        # 创建实例
-        exit_code, response = create_instance(
-            region_id=region_id,
-            image_id=image_id,
-            instance_type=instance_type,
-            security_group_id=security_group_id,
-            vswitch_id=vswitch_id,
-            instance_name=instance_name,
-            key_pair_name=key_pair_name,
-            ram_role_name=ram_role_name,
-            spot_strategy=spot_strategy,
-            spot_price_limit=spot_price_limit,
-            user_data_b64=user_data_b64,
-        )
+        # 创建实例（支持磁盘类型降级）
+        disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
+        instance_created = False
+        last_error = None
 
-        # 输出响应（用于调试）
-        print(f"Command exit code: {exit_code}", file=sys.stderr)
-        print(f"Command response length: {len(response)} characters", file=sys.stderr)
-        if response:
-            print("Command response:", file=sys.stderr)
-            print(response, file=sys.stderr)
-        else:
-            print("Command response is empty", file=sys.stderr)
+        for disk_category in disk_categories:
+            print(
+                f"Attempting to create instance with disk category: {disk_category}",
+                file=sys.stderr,
+            )
+            exit_code, response = create_instance(
+                region_id=region_id,
+                image_id=image_id,
+                instance_type=instance_type,
+                security_group_id=security_group_id,
+                vswitch_id=vswitch_id,
+                instance_name=instance_name,
+                key_pair_name=key_pair_name,
+                ram_role_name=ram_role_name,
+                spot_strategy=spot_strategy,
+                spot_price_limit=spot_price_limit,
+                user_data_b64=user_data_b64,
+                system_disk_category=disk_category,
+            )
 
-        if exit_code != 0:
-            error_exit(f"Failed to create Spot instance (exit code: {exit_code})")
+            # 检查是否成功
+            if exit_code == 0 and response:
+                instance_id = extract_instance_id(response)
+                if instance_id and instance_id != "null":
+                    print(
+                        f"Instance created successfully with disk category: {disk_category}",
+                        file=sys.stderr,
+                    )
+                    instance_created = True
+                    print(instance_id)
+                    sys.exit(0)
+                else:
+                    # 尝试下一个磁盘类型
+                    print(
+                        f"Failed to extract instance ID, trying next disk category...",
+                        file=sys.stderr,
+                    )
+                    last_error = response
+            else:
+                # 检查错误信息，如果是磁盘类型不支持，尝试下一个
+                if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                    print(
+                        f"Disk category {disk_category} not supported, trying next...",
+                        file=sys.stderr,
+                    )
+                    last_error = response
+                    continue
+                else:
+                    # 其他错误，不继续尝试
+                    last_error = response
+                    break
 
-        if not response:
-            error_exit("Empty response from Aliyun CLI")
-
-        # 提取实例 ID
-        instance_id = extract_instance_id(response)
-        if not instance_id or instance_id == "null":
-            error_exit("Failed to extract instance ID from response")
-
-        print(f"Spot instance created successfully: {instance_id}", file=sys.stderr)
-        print(instance_id)
+        # 所有磁盘类型都失败了
+        if not instance_created:
+            error_exit(
+                f"Failed to create Spot instance with all disk categories. Last error: {last_error}"
+            )
 
 
 if __name__ == "__main__":
