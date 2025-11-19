@@ -335,16 +335,16 @@ echo "Instance will be automatically deleted after image creation completes"
 
 def get_image_size(region_id: str, image_id: str) -> Optional[int]:
     """查询镜像大小（单位：GB）"""
-    # 尝试两种参数格式：先尝试 JSON 数组，失败则尝试直接字符串
-    for image_ids_param in [json.dumps([image_id]), image_id]:
+    # 尝试两种参数格式：直接字符串，或者 JSON 数组（虽然参数名是单数，但可能支持数组格式）
+    for image_id_param in [image_id, json.dumps([image_id])]:
         cmd = [
             "aliyun",
             "ecs",
             "DescribeImages",
             "--RegionId",
             region_id,
-            "--ImageIds",
-            image_ids_param,
+            "--ImageId",
+            image_id_param,
         ]
 
         try:
@@ -368,13 +368,24 @@ def get_image_size(region_id: str, image_id: str) -> Optional[int]:
                         if size_bytes:
                             # 转换为 GB（向上取整）
                             size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
+                            print(f"Successfully queried image size: {size_bytes} bytes ({size_gb}GB)", file=sys.stderr)
                             return size_gb
-                except json.JSONDecodeError:
+                        else:
+                            print(f"Warning: Image {image_id} has no Size field", file=sys.stderr)
+                    else:
+                        print(f"Warning: No image found in response for {image_id}", file=sys.stderr)
+                except json.JSONDecodeError as e:
                     # JSON 解析失败，继续尝试下一种格式
+                    print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
+                    if result.stderr:
+                        print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
                     continue
 
-            # 如果返回码为 0 但没有数据，继续尝试下一种格式
-            if result.returncode == 0:
+            # 如果返回码非零，输出错误信息
+            if result.returncode != 0:
+                print(f"Warning: Command failed with exit code {result.returncode}", file=sys.stderr)
+                if result.stderr:
+                    print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
                 continue
 
         except subprocess.TimeoutExpired:
@@ -384,6 +395,7 @@ def get_image_size(region_id: str, image_id: str) -> Optional[int]:
             print(f"Warning: Failed to query image size: {e}", file=sys.stderr)
             continue
 
+    print(f"Warning: Failed to query image size for {image_id} after trying all formats", file=sys.stderr)
     return None
 
 
@@ -708,18 +720,18 @@ def wait_for_image_ready(
     max_consecutive_errors = 5
 
     while time.time() - start_time < timeout:
-        # 尝试两种参数格式：先尝试 JSON 数组，失败则尝试逗号分隔字符串
+        # 尝试两种参数格式：直接字符串，或者 JSON 数组（虽然参数名是单数，但可能支持数组格式）
         success = False
         last_result = None
-        for image_ids_param in [json.dumps([image_id]), image_id]:
+        for image_id_param in [image_id, json.dumps([image_id])]:
             cmd = [
                 "aliyun",
                 "ecs",
                 "DescribeImages",
                 "--RegionId",
                 region_id,
-                "--ImageIds",
-                image_ids_param,
+                "--ImageId",
+                image_id_param,
             ]
 
             try:
