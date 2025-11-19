@@ -175,8 +175,159 @@ sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
 echo "Cleanup completed"
+
+# 创建镜像构建完成标志文件（用于自毁脚本检测）
+touch /opt/image-build-complete.flag
+echo "Image build completed, ready for image creation" > /opt/image-build-complete.flag
+
 echo "=== Image Build Script Completed ==="
 echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# 安装并配置自毁脚本（等待镜像创建完成后自动删除实例）
+echo "=== Installing self-destruct mechanism ==="
+
+# 创建自毁脚本
+cat > /usr/local/bin/self-destruct.sh << 'SELF_DESTRUCT_EOF'
+#!/bin/bash
+
+# 实例自毁脚本
+# 在镜像创建完成后自动删除 ECS 实例
+# 使用实例角色（RamRoleName）获取权限进行认证
+
+set -euo pipefail
+
+# 日志文件
+LOG_FILE="/var/log/self-destruct.log"
+
+# 记录日志函数
+log() {
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "${LOG_FILE}"
+}
+
+log "=== Instance Self-Destruct Script Started ==="
+
+# 等待镜像构建完成标志文件（最多等待 2 小时）
+MAX_WAIT=7200  # 2 小时
+WAIT_INTERVAL=60  # 每分钟检查一次
+ELAPSED=0
+
+log "Waiting for image build to complete..."
+while [[ ! -f /opt/image-build-complete.flag ]] && [[ ${ELAPSED} -lt ${MAX_WAIT} ]]; do
+    sleep ${WAIT_INTERVAL}
+    ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+    log "Still waiting for image build completion... (${ELAPSED}s / ${MAX_WAIT}s)"
+done
+
+if [[ ! -f /opt/image-build-complete.flag ]]; then
+    log "Warning: Image build completion flag not found after ${MAX_WAIT}s, proceeding with self-destruct anyway"
+else
+    log "Image build completion flag found, proceeding with self-destruct"
+fi
+
+# 额外等待一段时间，确保镜像创建完成（从外部脚本触发镜像创建）
+log "Waiting additional 5 minutes for image creation to complete..."
+sleep 300
+
+# 获取实例 ID（通过阿里云元数据服务）
+METADATA_URL="http://100.100.100.200/latest/meta-data"
+INSTANCE_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/instance-id" || echo "")
+REGION_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/region-id" || echo "")
+
+if [[ -z "${INSTANCE_ID}" ]]; then
+    log "Error: Failed to get instance ID from metadata service"
+    exit 1
+fi
+
+if [[ -z "${REGION_ID}" ]]; then
+    log "Error: Failed to get region ID from metadata service"
+    exit 1
+fi
+
+log "Instance ID: ${INSTANCE_ID}"
+log "Region ID: ${REGION_ID}"
+
+# 检查 Aliyun CLI 是否已安装
+if ! command -v aliyun &> /dev/null; then
+    log "Error: Aliyun CLI is not installed"
+    exit 1
+fi
+
+# 配置 Aliyun CLI 使用实例角色认证
+# 获取实例角色名称（从元数据服务）
+RAM_ROLE_NAME=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/ram/security-credentials/" || echo "")
+
+if [[ -z "${RAM_ROLE_NAME}" ]]; then
+    log "Error: Failed to get RAM role name from metadata service"
+    log "Please ensure the instance has a RAM role attached"
+    exit 1
+fi
+
+log "RAM Role Name: ${RAM_ROLE_NAME}"
+log "Configuring Aliyun CLI to use instance role authentication"
+
+# 配置 aliyun cli 使用实例角色认证
+# 使用非交互式方式配置
+aliyun configure set \
+    --mode EcsRamRole \
+    --ram-role-name "${RAM_ROLE_NAME}" \
+    --region "${REGION_ID}" 2>&1 | tee -a "${LOG_FILE}" || {
+    log "Error: Failed to configure Aliyun CLI"
+    exit 1
+}
+
+log "Aliyun CLI configured successfully"
+
+# 等待一段时间，确保镜像创建完成
+log "Waiting 10 seconds before self-destruct..."
+sleep 10
+
+# 删除实例
+log "Deleting instance: ${INSTANCE_ID}"
+RESPONSE=$(aliyun ecs DeleteInstance \
+    --RegionId "${REGION_ID}" \
+    --InstanceId "${INSTANCE_ID}" \
+    --Force true 2>&1)
+
+EXIT_CODE=$?
+
+if [[ ${EXIT_CODE} -ne 0 ]]; then
+    log "Error: Failed to delete instance (exit code: ${EXIT_CODE})"
+    log "Response: ${RESPONSE}"
+    exit ${EXIT_CODE}
+fi
+
+log "Instance deleted successfully: ${INSTANCE_ID}"
+log "=== Instance Self-Destruct Script Completed ==="
+SELF_DESTRUCT_EOF
+
+chmod +x /usr/local/bin/self-destruct.sh
+
+# 创建 systemd service，在镜像构建完成后执行自毁脚本
+echo "=== Creating self-destruct systemd service ==="
+cat > /etc/systemd/system/self-destruct.service << 'SERVICE_EOF'
+[Unit]
+Description=Instance Self-Destruct Service (Image Builder)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# 等待镜像构建完成标志文件后执行自毁脚本
+ExecStart=/bin/bash -c 'while [[ ! -f /opt/image-build-complete.flag ]]; do sleep 60; done; sleep 300; /usr/local/bin/self-destruct.sh'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# 启用并启动服务
+systemctl daemon-reload
+systemctl enable self-destruct.service
+systemctl start self-destruct.service
+
+echo "Self-destruct service created, enabled and started"
+echo "Instance will be automatically deleted after image creation completes"
 """
 
     return script
@@ -260,6 +411,7 @@ def create_instance(
     instance_name: str,
     user_data_b64: str,
     key_pair_name: Optional[str] = None,
+    ram_role_name: Optional[str] = None,
     spot_strategy: str = "SpotAsPriceGo",
     spot_price_limit: Optional[str] = None,
     system_disk_category: Optional[str] = None,
@@ -299,6 +451,9 @@ def create_instance(
 
     if key_pair_name:
         cmd.extend(["--KeyPairName", key_pair_name])
+
+    if ram_role_name:
+        cmd.extend(["--RamRoleName", ram_role_name])
 
     # 添加 Spot 策略和价格限制
     if spot_strategy == "SpotWithPriceLimit" and spot_price_limit:
@@ -786,6 +941,7 @@ def main():
                     instance_name=instance_name,
                     user_data_b64=user_data_b64,
                     key_pair_name=key_pair_name,
+                    ram_role_name=ram_role_name,
                     spot_strategy=spot_strategy,
                     spot_price_limit=cand_spot_price_limit,
                     system_disk_category=disk_category,
@@ -857,6 +1013,7 @@ def main():
                 instance_name=instance_name,
                 user_data_b64=user_data_b64,
                 key_pair_name=key_pair_name,
+                ram_role_name=ram_role_name,
                 spot_strategy=spot_strategy,
                 spot_price_limit=spot_price_limit,
                 system_disk_category=disk_category,
@@ -959,8 +1116,11 @@ def main():
         print(f"SKIP_BUILD=false", file=sys.stdout)
 
     finally:
-        # 清理临时实例
-        delete_instance(region_id, instance_id)
+        # 清理临时实例（如果自毁机制失败，作为备用）
+        # 注意：如果 RAM 角色配置正确，实例应该已经通过自毁机制删除
+        if instance_id:
+            print("Attempting to delete instance as fallback (self-destruct should have already done this)", file=sys.stderr)
+            delete_instance(region_id, instance_id)
 
 
 if __name__ == "__main__":

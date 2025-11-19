@@ -184,6 +184,8 @@ jobs:
           ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
           ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
           ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
           # 如果强制构建，跳过版本检查
           if [[ "${FORCE_BUILD}" == "true" ]]; then
@@ -380,6 +382,8 @@ jobs:
           ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
           ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
           ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
           # 如果强制构建，跳过版本检查
           if [[ "${FORCE_BUILD}" == "true" ]]; then
