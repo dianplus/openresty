@@ -366,7 +366,7 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
                     image_id = image.get("ImageId", "")
                     image_name = image.get("ImageName", "")
                     creation_time = image.get("CreationTime", "")
-                    size_bytes = image.get("Size", 0)  # Size 字段单位是字节
+                    size_gb = image.get("Size", 0)  # DescribeImageFromFamily 返回的 Size 字段单位是 GB
                     
                     if image_id:
                         print(f"Found latest image from family {image_family}: {image_id} ({image_name})", file=sys.stderr)
@@ -375,11 +375,12 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
                             "ImageName": image_name,
                             "CreationTime": creation_time,
                         }
-                        # 如果包含 Size 字段，添加到返回结果中
-                        if size_bytes:
+                        # 如果包含 Size 字段，转换为字节后添加到返回结果中（统一以字节为单位）
+                        if size_gb:
+                            # 将 GB 转换为字节
+                            size_bytes = int(size_gb * 1024 * 1024 * 1024)
                             result["Size"] = size_bytes
-                            size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
-                            print(f"Image size from family: {size_bytes} bytes ({size_gb}GB)", file=sys.stderr)
+                            print(f"Image size from family: {size_gb}GB ({size_bytes} bytes)", file=sys.stderr)
                         return result
                     else:
                         print(f"Warning: Image from family {image_family} has no ImageId", file=sys.stderr)
@@ -499,9 +500,10 @@ def get_base_image_info(region_id: str, arch: str) -> dict:
         if image_info:
             image_name = image_info.get("ImageName", image_name)
             image_creation_time = image_info.get("CreationTime", image_creation_time)
-            image_size_bytes = image_info.get("Size")  # 如果查询到了 Size，使用它
+            image_size_bytes = image_info.get("Size")  # DescribeImages 返回的 Size 字段单位是字节
             print(f"Found image details: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
             if image_size_bytes:
+                # DescribeImages 返回的 Size 已经是字节，直接使用
                 size_gb = (image_size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
                 print(f"Image size from query: {image_size_bytes} bytes ({size_gb}GB)", file=sys.stderr)
         else:
