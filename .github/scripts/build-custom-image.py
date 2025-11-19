@@ -434,7 +434,8 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
                         image_id_found = image.get("ImageId", "")
                         image_name = image.get("ImageName", "")
                         creation_time = image.get("CreationTime", "")
-                        size_bytes = image.get("Size", 0)  # DescribeImages 返回的 Size 字段单位是字节
+                        # DescribeImages API 返回的 Size 字段单位是 GB（与 DescribeImageFromFamily 一致）
+                        size_gb = image.get("Size", 0)
                         
                         if image_id_found == image_id:
                             result = {
@@ -442,11 +443,9 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
                                 "ImageName": image_name,
                                 "CreationTime": creation_time,
                             }
-                            # 如果包含 Size 字段，转换为 GB 后添加到返回结果中（统一以 GB 为单位）
-                            if size_bytes:
-                                # 将字节转换为 GB（向上取整）
-                                size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
-                                result["Size"] = size_gb
+                            # 如果包含 Size 字段，直接以 GB 为单位添加到返回结果中
+                            if size_gb:
+                                result["Size"] = int(size_gb)  # 确保是整数
                             return result
                 except json.JSONDecodeError:
                     continue
@@ -548,13 +547,11 @@ def get_image_size(region_id: str, image_id: str) -> Optional[int]:
                         and len(data["Images"]["Image"]) > 0
                     ):
                         image = data["Images"]["Image"][0]
-                        # Size 字段单位是字节，需要转换为 GB
-                        size_bytes = image.get("Size", 0)
-                        if size_bytes:
-                            # 转换为 GB（向上取整）
-                            size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
-                            print(f"Successfully queried image size: {size_bytes} bytes ({size_gb}GB)", file=sys.stderr)
-                            return size_gb
+                        # DescribeImages API 返回的 Size 字段单位是 GB（与 DescribeImageFromFamily 一致）
+                        size_gb = image.get("Size", 0)
+                        if size_gb:
+                            print(f"Successfully queried image size: {size_gb}GB", file=sys.stderr)
+                            return int(size_gb)  # 确保返回整数
                         else:
                             print(f"Warning: Image {image_id} has no Size field", file=sys.stderr)
                     else:
