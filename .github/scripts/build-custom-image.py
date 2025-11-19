@@ -1174,8 +1174,17 @@ def cleanup_old_images(
     region_id: str,
     image_name: str,
     keep_count: int = 5,
+    exclude_image_id: Optional[str] = None,
 ) -> None:
-    """清理旧版本镜像：重命名旧镜像并保留指定数量，删除多余的"""
+    """
+    清理旧版本镜像：重命名旧镜像并保留指定数量，删除多余的
+    
+    Args:
+        region_id: 区域ID
+        image_name: 镜像名称（应该以 -latest 结尾）
+        keep_count: 保留的镜像数量
+        exclude_image_id: 要排除的镜像ID（通常是新创建的镜像，不应被重命名）
+    """
     from datetime import datetime
     
     images = list_images_by_name(region_id, image_name)
@@ -1193,10 +1202,16 @@ def cleanup_old_images(
     
     # 重命名所有同名镜像（为新镜像让路）
     # 规则：如果镜像名称以 -latest 结尾，去掉 -latest 后加上日期后缀
+    # 注意：排除新创建的镜像（exclude_image_id），它应该保持 -latest 后缀
     for image in images:
         image_id = image.get("ImageId", "")
         creation_time = image.get("CreationTime", "")
         image_name_display = image.get("ImageName", "")
+        
+        # 跳过要排除的镜像（通常是新创建的镜像）
+        if exclude_image_id and image_id == exclude_image_id:
+            print(f"Skipping newly created image {image_id} (keeping -latest suffix)", file=sys.stderr)
+            continue
         
         # 只重命名名称完全匹配的镜像（即还是 -latest 的镜像）
         if image_name_display == image_name:
@@ -1529,7 +1544,7 @@ def main():
         # 在创建新镜像前，先处理旧镜像（重命名和清理）
         keep_count = int(os.environ.get("KEEP_IMAGE_COUNT", "5"))
         print(f"Processing existing images with name {image_name_latest} (keeping {keep_count} latest)", file=sys.stderr)
-        cleanup_old_images(region_id, image_name_latest, keep_count)
+        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=None)
         
         description = f"Custom Ubuntu 24 image for {arch} with pre-installed tools (base: {image_id})"
         tags = {
@@ -1563,8 +1578,9 @@ def main():
             error_exit("Image failed to become ready")
 
         # 再次清理旧版本镜像（确保不超过保留数量）
+        # 注意：排除新创建的镜像，它应该保持 -latest 后缀
         print(f"Final cleanup of old images (keeping {keep_count} latest)", file=sys.stderr)
-        cleanup_old_images(region_id, image_name_latest, keep_count)
+        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=image_id_new)
 
         # 输出结果
         print(f"IMAGE_ID={image_id_new}", file=sys.stdout)
