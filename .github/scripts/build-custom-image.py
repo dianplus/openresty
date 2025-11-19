@@ -987,24 +987,29 @@ def cleanup_old_images(
     
     print(f"Found {len(images)} existing image(s) with name {image_name}", file=sys.stderr)
     
-    # 第一个是最新的，保留原名称
-    # 从第二个开始，重命名旧镜像（添加日期后缀）
-    images_to_rename = images[1:]
-    
-    for image in images_to_rename:
+    # 重命名所有同名镜像（为新镜像让路）
+    # 规则：如果镜像名称以 -latest 结尾，去掉 -latest 后加上日期后缀
+    for image in images:
         image_id = image.get("ImageId", "")
         creation_time = image.get("CreationTime", "")
         image_name_display = image.get("ImageName", "")
         
-        # 如果镜像名称已经是带日期后缀的格式（不是以 -latest 结尾），跳过重命名
-        # 否则重命名它
-        if creation_time and image_name_display == image_name:
+        # 只重命名名称完全匹配的镜像（即还是 -latest 的镜像）
+        if image_name_display == image_name:
             # 解析创建时间，生成日期后缀
             try:
                 # 阿里云时间格式：2024-01-01T12:00:00Z
                 dt = datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
-                date_suffix = dt.strftime("%Y%m%d-%H%M%S")
-                new_name = f"{image_name}-{date_suffix}"
+                # 日期格式：YYYYMMDDHHMM（例如：202511192049）
+                date_suffix = dt.strftime("%Y%m%d%H%M")
+                
+                # 去掉末尾的 -latest，然后加上日期后缀
+                if image_name.endswith("-latest"):
+                    base_name = image_name[:-7]  # 去掉 "-latest" (7个字符)
+                    new_name = f"{base_name}-{date_suffix}"
+                else:
+                    # 如果不以 -latest 结尾，直接加上日期后缀
+                    new_name = f"{image_name}-{date_suffix}"
                 
                 # 重命名镜像
                 if modify_image_name(region_id, image_id, new_name):
