@@ -149,7 +149,7 @@ journalctl --vacuum-time=1s 2>/dev/null || true
 rm -rf /var/log/journal/* 2>/dev/null || true
 
 # 清理其他临时文件
-find /var/log -type f -name "*.log" -exec truncate -s 0 {{}} \; 2>/dev/null || true
+find /var/log -type f -name "*.log" -exec truncate -s 0 {{}} \\; 2>/dev/null || true
 find /var/log -type f -name "*.gz" -delete 2>/dev/null || true
 
 # 清理包管理器缓存
@@ -200,9 +200,9 @@ set -euo pipefail
 LOG_FILE="/var/log/self-destruct.log"
 
 # 记录日志函数
-log() {
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "${LOG_FILE}"
-}
+log() {{
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "${{LOG_FILE}}"
+}}
 
 log "=== Instance Self-Destruct Script Started ==="
 
@@ -212,14 +212,14 @@ WAIT_INTERVAL=60  # 每分钟检查一次
 ELAPSED=0
 
 log "Waiting for image build to complete..."
-while [[ ! -f /opt/image-build-complete.flag ]] && [[ ${ELAPSED} -lt ${MAX_WAIT} ]]; do
-    sleep ${WAIT_INTERVAL}
+while [[ ! -f /opt/image-build-complete.flag ]] && [[ ${{ELAPSED}} -lt ${{MAX_WAIT}} ]]; do
+    sleep ${{WAIT_INTERVAL}}
     ELAPSED=$((ELAPSED + WAIT_INTERVAL))
-    log "Still waiting for image build completion... (${ELAPSED}s / ${MAX_WAIT}s)"
+    log "Still waiting for image build completion... (${{ELAPSED}}s / ${{MAX_WAIT}}s)"
 done
 
 if [[ ! -f /opt/image-build-complete.flag ]]; then
-    log "Warning: Image build completion flag not found after ${MAX_WAIT}s, proceeding with self-destruct anyway"
+    log "Warning: Image build completion flag not found after ${{MAX_WAIT}}s, proceeding with self-destruct anyway"
 else
     log "Image build completion flag found, proceeding with self-destruct"
 fi
@@ -230,21 +230,21 @@ sleep 300
 
 # 获取实例 ID（通过阿里云元数据服务）
 METADATA_URL="http://100.100.100.200/latest/meta-data"
-INSTANCE_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/instance-id" || echo "")
-REGION_ID=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/region-id" || echo "")
+INSTANCE_ID=$(curl -s --connect-timeout 5 --max-time 10 "${{METADATA_URL}}/instance-id" || echo "")
+REGION_ID=$(curl -s --connect-timeout 5 --max-time 10 "${{METADATA_URL}}/region-id" || echo "")
 
-if [[ -z "${INSTANCE_ID}" ]]; then
+if [[ -z "${{INSTANCE_ID}}" ]]; then
     log "Error: Failed to get instance ID from metadata service"
     exit 1
 fi
 
-if [[ -z "${REGION_ID}" ]]; then
+if [[ -z "${{REGION_ID}}" ]]; then
     log "Error: Failed to get region ID from metadata service"
     exit 1
 fi
 
-log "Instance ID: ${INSTANCE_ID}"
-log "Region ID: ${REGION_ID}"
+log "Instance ID: ${{INSTANCE_ID}}"
+log "Region ID: ${{REGION_ID}}"
 
 # 检查 Aliyun CLI 是否已安装
 if ! command -v aliyun &> /dev/null; then
@@ -254,26 +254,26 @@ fi
 
 # 配置 Aliyun CLI 使用实例角色认证
 # 获取实例角色名称（从元数据服务）
-RAM_ROLE_NAME=$(curl -s --connect-timeout 5 --max-time 10 "${METADATA_URL}/ram/security-credentials/" || echo "")
+RAM_ROLE_NAME=$(curl -s --connect-timeout 5 --max-time 10 "${{METADATA_URL}}/ram/security-credentials/" || echo "")
 
-if [[ -z "${RAM_ROLE_NAME}" ]]; then
+if [[ -z "${{RAM_ROLE_NAME}}" ]]; then
     log "Error: Failed to get RAM role name from metadata service"
     log "Please ensure the instance has a RAM role attached"
     exit 1
 fi
 
-log "RAM Role Name: ${RAM_ROLE_NAME}"
+log "RAM Role Name: ${{RAM_ROLE_NAME}}"
 log "Configuring Aliyun CLI to use instance role authentication"
 
 # 配置 aliyun cli 使用实例角色认证
 # 使用非交互式方式配置
 aliyun configure set \
     --mode EcsRamRole \
-    --ram-role-name "${RAM_ROLE_NAME}" \
-    --region "${REGION_ID}" 2>&1 | tee -a "${LOG_FILE}" || {
+    --ram-role-name "${{RAM_ROLE_NAME}}" \
+    --region "${{REGION_ID}}" 2>&1 | tee -a "${{LOG_FILE}}" || {{
     log "Error: Failed to configure Aliyun CLI"
     exit 1
-}
+}}
 
 log "Aliyun CLI configured successfully"
 
@@ -282,21 +282,21 @@ log "Waiting 10 seconds before self-destruct..."
 sleep 10
 
 # 删除实例
-log "Deleting instance: ${INSTANCE_ID}"
+log "Deleting instance: ${{INSTANCE_ID}}"
 RESPONSE=$(aliyun ecs DeleteInstance \
-    --RegionId "${REGION_ID}" \
-    --InstanceId "${INSTANCE_ID}" \
+    --RegionId "${{REGION_ID}}" \
+    --InstanceId "${{INSTANCE_ID}}" \
     --Force true 2>&1)
 
 EXIT_CODE=$?
 
-if [[ ${EXIT_CODE} -ne 0 ]]; then
-    log "Error: Failed to delete instance (exit code: ${EXIT_CODE})"
-    log "Response: ${RESPONSE}"
-    exit ${EXIT_CODE}
+if [[ ${{EXIT_CODE}} -ne 0 ]]; then
+    log "Error: Failed to delete instance (exit code: ${{EXIT_CODE}})"
+    log "Response: ${{RESPONSE}}"
+    exit ${{EXIT_CODE}}
 fi
 
-log "Instance deleted successfully: ${INSTANCE_ID}"
+log "Instance deleted successfully: ${{INSTANCE_ID}}"
 log "=== Instance Self-Destruct Script Completed ==="
 SELF_DESTRUCT_EOF
 
@@ -629,43 +629,92 @@ def wait_for_image_ready(
     """等待镜像创建完成"""
     print(f"Waiting for image {image_id} to be ready...", file=sys.stderr)
     start_time = time.time()
+    check_interval = 30
+    consecutive_errors = 0
+    max_consecutive_errors = 5
 
     while time.time() - start_time < timeout:
-        cmd = [
-            "aliyun",
-            "ecs",
-            "DescribeImages",
-            "--RegionId",
-            region_id,
-            "--ImageIds",
-            json.dumps([image_id]),
-        ]
+        # 尝试两种参数格式：先尝试 JSON 数组，失败则尝试逗号分隔字符串
+        success = False
+        last_result = None
+        for image_ids_param in [json.dumps([image_id]), image_id]:
+            cmd = [
+                "aliyun",
+                "ecs",
+                "DescribeImages",
+                "--RegionId",
+                region_id,
+                "--ImageIds",
+                image_ids_param,
+            ]
 
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=30
-            )
-            data = json.loads(result.stdout)
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, check=False, timeout=30
+                )
+                last_result = result
 
-            if (
-                "Images" in data
-                and "Image" in data["Images"]
-                and len(data["Images"]["Image"]) > 0
-            ):
-                image = data["Images"]["Image"][0]
-                status = image.get("Status", "")
-                print(f"Image status: {status}", file=sys.stderr)
+                # 即使返回码非零，也尝试解析输出（有时数据在 stdout）
+                if result.stdout:
+                    try:
+                        data = json.loads(result.stdout)
 
-                if status == "Available":
-                    print("Image is ready", file=sys.stderr)
-                    return True
-                elif status == "CreateFailed":
-                    error_exit("Image creation failed")
+                        if (
+                            "Images" in data
+                            and "Image" in data["Images"]
+                            and len(data["Images"]["Image"]) > 0
+                        ):
+                            image = data["Images"]["Image"][0]
+                            status = image.get("Status", "")
+                            print(f"Image status: {status}", file=sys.stderr)
 
-            time.sleep(30)
-        except (subprocess.SubprocessError, json.JSONDecodeError, KeyError) as e:
-            print(f"Error checking image status: {e}", file=sys.stderr)
-            time.sleep(30)
+                            if status == "Available":
+                                print("Image is ready", file=sys.stderr)
+                                return True
+                            elif status == "CreateFailed":
+                                error_exit("Image creation failed")
+                            
+                            # 成功解析到镜像信息
+                            success = True
+                            consecutive_errors = 0
+                            break
+                    except json.JSONDecodeError:
+                        # JSON 解析失败，继续尝试下一种格式
+                        continue
+
+                # 如果返回码为 0 但没有数据，可能是镜像还不存在，继续等待
+                if result.returncode == 0:
+                    success = True
+                    consecutive_errors = 0
+                    break
+
+            except subprocess.TimeoutExpired:
+                print("Command timeout, retrying...", file=sys.stderr)
+                break
+            except Exception as e:
+                print(f"Unexpected error: {e}", file=sys.stderr)
+                break
+
+        # 如果所有格式都失败，记录错误但继续等待
+        if not success:
+            consecutive_errors += 1
+            if last_result and last_result.returncode != 0:
+                print(
+                    f"Command failed with exit code {last_result.returncode}",
+                    file=sys.stderr,
+                )
+                if last_result.stderr:
+                    print(f"Error output: {last_result.stderr}", file=sys.stderr)
+            
+            # 如果连续多次错误，输出警告但继续等待
+            if consecutive_errors >= max_consecutive_errors:
+                print(
+                    f"Warning: {consecutive_errors} consecutive errors, but continuing to wait...",
+                    file=sys.stderr,
+                )
+                consecutive_errors = 0  # 重置计数，避免无限警告
+
+        time.sleep(check_interval)
 
     print("Timeout waiting for image to be ready", file=sys.stderr)
     return False
