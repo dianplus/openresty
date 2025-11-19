@@ -318,7 +318,7 @@ jobs:
         # 此 action 仅用于安装 aliyun cli，不进行配置，使用默认版本
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v3
+        uses: docker/setup-docker-action@v4
 
       - name: Set up Docker Buildx
         if: vars.DOCKER_HUB_MIRROR != ''
