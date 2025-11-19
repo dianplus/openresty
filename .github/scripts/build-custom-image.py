@@ -415,6 +415,7 @@ def create_instance(
     spot_strategy: str = "SpotAsPriceGo",
     spot_price_limit: Optional[str] = None,
     system_disk_category: Optional[str] = None,
+    tags: Optional[dict] = None,
 ) -> Tuple[int, str]:
     """创建 ECS Spot 实例"""
     # 如果没有指定磁盘类型，自动检测
@@ -467,6 +468,14 @@ def create_instance(
         )
     else:
         cmd.extend(["--SpotStrategy", "SpotAsPriceGo"])
+
+    # 添加标签
+    if tags:
+        tag_index = 1
+        for key, value in tags.items():
+            cmd.extend([f"--Tag.{tag_index}.Key", key])
+            cmd.extend([f"--Tag.{tag_index}.Value", value])
+            tag_index += 1
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
@@ -860,21 +869,105 @@ def delete_image(region_id: str, image_id: str) -> bool:
         return False
 
 
+def modify_image_name(
+    region_id: str, image_id: str, new_image_name: str
+) -> bool:
+    """修改镜像名称"""
+    print(f"Renaming image {image_id} to {new_image_name}...", file=sys.stderr)
+    cmd = [
+        "aliyun",
+        "ecs",
+        "ModifyImageAttribute",
+        "--RegionId",
+        region_id,
+        "--ImageId",
+        image_id,
+        "--ImageName",
+        new_image_name,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=60
+        )
+        if result.returncode == 0:
+            print(f"Image {image_id} renamed to {new_image_name} successfully", file=sys.stderr)
+            return True
+        else:
+            print(f"Failed to rename image {image_id}: {result.stderr}", file=sys.stderr)
+            return False
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Error renaming image {image_id}: {e}", file=sys.stderr)
+        return False
+
+
 def cleanup_old_images(
     region_id: str,
     image_name: str,
-    keep_count: int = 1,
+    keep_count: int = 5,
 ) -> None:
-    """清理旧版本镜像，只保留指定数量的最新版本"""
+    """清理旧版本镜像：重命名旧镜像并保留指定数量，删除多余的"""
+    from datetime import datetime
+    
     images = list_images_by_name(region_id, image_name)
     
-    if len(images) <= keep_count:
-        print(f"Only {len(images)} image(s) found, no cleanup needed (keeping {keep_count})", file=sys.stderr)
+    if len(images) == 0:
+        print(f"No existing images found with name {image_name}, no cleanup needed", file=sys.stderr)
         return
-
+    
+    # 按创建时间排序（最新的在前）
+    images.sort(
+        key=lambda x: x.get("CreationTime", ""), reverse=True
+    )
+    
+    print(f"Found {len(images)} existing image(s) with name {image_name}", file=sys.stderr)
+    
+    # 第一个是最新的，保留原名称
+    # 从第二个开始，重命名旧镜像（添加日期后缀）
+    images_to_rename = images[1:]
+    
+    for image in images_to_rename:
+        image_id = image.get("ImageId", "")
+        creation_time = image.get("CreationTime", "")
+        image_name_display = image.get("ImageName", "")
+        
+        # 如果镜像名称已经是带日期后缀的格式（不是以 -latest 结尾），跳过重命名
+        # 否则重命名它
+        if creation_time and image_name_display == image_name:
+            # 解析创建时间，生成日期后缀
+            try:
+                # 阿里云时间格式：2024-01-01T12:00:00Z
+                dt = datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
+                date_suffix = dt.strftime("%Y%m%d-%H%M%S")
+                new_name = f"{image_name}-{date_suffix}"
+                
+                # 重命名镜像
+                if modify_image_name(region_id, image_id, new_name):
+                    print(f"Renamed image {image_id} from {image_name_display} to {new_name}", file=sys.stderr)
+                else:
+                    print(f"Warning: Failed to rename image {image_id}, will delete it instead", file=sys.stderr)
+                    # 重命名失败，直接删除
+                    delete_image(region_id, image_id)
+            except (ValueError, AttributeError) as e:
+                print(f"Warning: Failed to parse creation time {creation_time}: {e}, will delete image", file=sys.stderr)
+                delete_image(region_id, image_id)
+    
+    # 重新查询所有同名镜像（重命名后的镜像不会出现在这里）
+    # 如果还有超出保留数量的，删除多余的
+    remaining_images = list_images_by_name(region_id, image_name)
+    
+    if len(remaining_images) <= keep_count:
+        print(f"After renaming, {len(remaining_images)} image(s) found with name {image_name}, no deletion needed (keeping {keep_count})", file=sys.stderr)
+        return
+    
+    # 按创建时间排序（最新的在前）
+    remaining_images.sort(
+        key=lambda x: x.get("CreationTime", ""), reverse=True
+    )
+    
     # 删除超出保留数量的旧镜像
-    images_to_delete = images[keep_count:]
-    print(f"Found {len(images)} images, keeping {keep_count} latest, deleting {len(images_to_delete)} old ones", file=sys.stderr)
+    images_to_delete = remaining_images[keep_count:]
+    print(f"Found {len(remaining_images)} images after renaming, keeping {keep_count} latest, deleting {len(images_to_delete)} old ones", file=sys.stderr)
     
     for image in images_to_delete:
         image_id = image.get("ImageId", "")
@@ -940,6 +1033,11 @@ def main():
     timestamp = int(time.time())
     instance_name = f"image-builder-{arch}-{timestamp}"
 
+    # 定义实例标签
+    instance_tags = {
+        "GIHUB_RUNNER_TYPE": "aliyun-ecs-spot",
+    }
+
     # 创建临时实例（支持重试机制）
     instance_id = None
     if candidates_file and os.path.isfile(candidates_file):
@@ -995,6 +1093,7 @@ def main():
                     spot_strategy=spot_strategy,
                     spot_price_limit=cand_spot_price_limit,
                     system_disk_category=disk_category,
+                    tags=instance_tags,
                 )
 
                 # 检查是否成功
@@ -1067,6 +1166,7 @@ def main():
                 spot_strategy=spot_strategy,
                 spot_price_limit=spot_price_limit,
                 system_disk_category=disk_category,
+                tags=instance_tags,
             )
 
             # 检查是否成功
@@ -1125,6 +1225,12 @@ def main():
         # 创建自定义镜像（使用固定名称，便于引用）
         # 命名规则：{prefix}-{arch}-latest（类似 Docker 的 ubuntu:latest）
         image_name_latest = f"{image_name_prefix}-{arch}-latest"
+        
+        # 在创建新镜像前，先处理旧镜像（重命名和清理）
+        keep_count = int(os.environ.get("KEEP_IMAGE_COUNT", "5"))
+        print(f"Processing existing images with name {image_name_latest} (keeping {keep_count} latest)", file=sys.stderr)
+        cleanup_old_images(region_id, image_name_latest, keep_count)
+        
         description = f"Custom Ubuntu 24 image for {arch} with pre-installed tools (base: {image_id})"
         tags = {
             "VersionHash": version_hash,
@@ -1156,8 +1262,8 @@ def main():
         if not wait_for_image_ready(region_id, image_id_new):
             error_exit("Image failed to become ready")
 
-        # 清理旧版本镜像（只保留最新版本）
-        keep_count = int(os.environ.get("KEEP_IMAGE_COUNT", "1"))
+        # 再次清理旧版本镜像（确保不超过保留数量）
+        print(f"Final cleanup of old images (keeping {keep_count} latest)", file=sys.stderr)
         cleanup_old_images(region_id, image_name_latest, keep_count)
 
         # 输出结果
