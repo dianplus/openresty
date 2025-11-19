@@ -375,12 +375,10 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
                             "ImageName": image_name,
                             "CreationTime": creation_time,
                         }
-                        # 如果包含 Size 字段，转换为字节后添加到返回结果中（统一以字节为单位）
+                        # 如果包含 Size 字段，直接以 GB 为单位添加到返回结果中
                         if size_gb:
-                            # 将 GB 转换为字节
-                            size_bytes = int(size_gb * 1024 * 1024 * 1024)
-                            result["Size"] = size_bytes
-                            print(f"Image size from family: {size_gb}GB ({size_bytes} bytes)", file=sys.stderr)
+                            result["Size"] = size_gb
+                            print(f"Image size from family: {size_gb}GB", file=sys.stderr)
                         return result
                     else:
                         print(f"Warning: Image from family {image_family} has no ImageId", file=sys.stderr)
@@ -436,7 +434,7 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
                         image_id_found = image.get("ImageId", "")
                         image_name = image.get("ImageName", "")
                         creation_time = image.get("CreationTime", "")
-                        size_bytes = image.get("Size", 0)  # Size 字段单位是字节
+                        size_bytes = image.get("Size", 0)  # DescribeImages 返回的 Size 字段单位是字节
                         
                         if image_id_found == image_id:
                             result = {
@@ -444,9 +442,11 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
                                 "ImageName": image_name,
                                 "CreationTime": creation_time,
                             }
-                            # 如果包含 Size 字段，添加到返回结果中
+                            # 如果包含 Size 字段，转换为 GB 后添加到返回结果中（统一以 GB 为单位）
                             if size_bytes:
-                                result["Size"] = size_bytes
+                                # 将字节转换为 GB（向上取整）
+                                size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
+                                result["Size"] = size_gb
                             return result
                 except json.JSONDecodeError:
                     continue
@@ -493,19 +493,17 @@ def get_base_image_info(region_id: str, arch: str) -> dict:
         )
     
     # 如果只有镜像 ID，尝试查询镜像的详细信息
-    image_size_bytes = None
+    image_size_gb = None
     if not image_name or not image_creation_time:
         print(f"Querying image details for {image_id}...", file=sys.stderr)
         image_info = get_image_info_by_id(region_id, image_id)
         if image_info:
             image_name = image_info.get("ImageName", image_name)
             image_creation_time = image_info.get("CreationTime", image_creation_time)
-            image_size_bytes = image_info.get("Size")  # DescribeImages 返回的 Size 字段单位是字节
+            image_size_gb = image_info.get("Size")  # 已经转换为 GB
             print(f"Found image details: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
-            if image_size_bytes:
-                # DescribeImages 返回的 Size 已经是字节，直接使用
-                size_gb = (image_size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
-                print(f"Image size from query: {image_size_bytes} bytes ({size_gb}GB)", file=sys.stderr)
+            if image_size_gb:
+                print(f"Image size from query: {image_size_gb}GB", file=sys.stderr)
         else:
             print(f"Warning: Failed to query image details for {image_id}, using provided values", file=sys.stderr)
     
@@ -514,9 +512,9 @@ def get_base_image_info(region_id: str, arch: str) -> dict:
         "ImageName": image_name,
         "CreationTime": image_creation_time,
     }
-    # 如果获取到了 Size，添加到返回结果中
-    if image_size_bytes:
-        result["Size"] = image_size_bytes
+    # 如果获取到了 Size（单位：GB），添加到返回结果中
+    if image_size_gb:
+        result["Size"] = image_size_gb
     return result
 
 
@@ -669,7 +667,7 @@ def create_instance(
     spot_price_limit: Optional[str] = None,
     system_disk_category: Optional[str] = None,
     tags: Optional[dict] = None,
-    image_size_bytes: Optional[int] = None,
+    image_size_gb: Optional[int] = None,
 ) -> Tuple[int, str]:
     """创建 ECS Spot 实例"""
     # 如果没有指定磁盘类型，自动检测
@@ -678,13 +676,11 @@ def create_instance(
 
     # 查询镜像大小，动态计算系统盘大小
     # 如果已经提供了镜像大小（例如从 DescribeImageFromFamily 获取），直接使用
-    if image_size_bytes is not None:
-        # 转换为 GB（向上取整）
-        image_size_gb = (image_size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
-        print(f"Using provided image size: {image_size_bytes} bytes ({image_size_gb}GB)", file=sys.stderr)
-    else:
+    if image_size_gb is None:
         # 否则查询镜像大小
         image_size_gb = get_image_size(region_id, image_id)
+    else:
+        print(f"Using provided image size: {image_size_gb}GB", file=sys.stderr)
     
     if image_size_gb:
         # 系统盘大小 = 镜像大小 + 10GB（用于安装工具和临时文件），最小 40GB
@@ -1279,7 +1275,7 @@ def main():
     image_id = base_image_info["ImageId"]
     image_name = base_image_info.get("ImageName", "")
     image_creation_time = base_image_info.get("CreationTime", "")
-    image_size_bytes = base_image_info.get("Size")  # Size 字段单位是字节（如果存在）
+    image_size_gb = base_image_info.get("Size")  # Size 字段单位是 GB（如果存在）
     
     print(f"Using base image: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
 
@@ -1379,7 +1375,7 @@ def main():
                     spot_price_limit=cand_spot_price_limit,
                     system_disk_category=disk_category,
                     tags=instance_tags,
-                    image_size_bytes=image_size_bytes,
+                    image_size_gb=image_size_gb,
                 )
 
                 # 检查是否成功
@@ -1465,7 +1461,7 @@ def main():
                 spot_price_limit=spot_price_limit,
                 system_disk_category=disk_category,
                 tags=instance_tags,
-                image_size_bytes=image_size_bytes,
+                image_size_gb=image_size_gb,
             )
 
             # 检查是否成功
