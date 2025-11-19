@@ -1105,6 +1105,70 @@ def list_images_by_name(
         return []
 
 
+def list_images_by_prefix(
+    region_id: str, image_name_prefix: str
+) -> list:
+    """
+    列出所有前缀匹配的镜像（包括 -latest 和日期时间后缀的）
+    
+    Args:
+        region_id: 区域ID
+        image_name_prefix: 镜像名称前缀（例如：github-runner-ubuntu24-amd64）
+    
+    Returns:
+        所有匹配前缀的镜像列表（按创建时间排序，最新的在前）
+    """
+    import re
+    
+    # 查询所有自定义镜像（使用 ImageOwnerAlias=self）
+    cmd = [
+        "aliyun",
+        "ecs",
+        "DescribeImages",
+        "--RegionId",
+        region_id,
+        "--ImageOwnerAlias",
+        "self",
+        "--PageSize",
+        "100",  # 增加页面大小以获取更多镜像
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=30
+        )
+        data = json.loads(result.stdout)
+
+        if (
+            "Images" in data
+            and "Image" in data["Images"]
+            and len(data["Images"]["Image"]) > 0
+        ):
+            all_images = data["Images"]["Image"]
+            
+            # 筛选前缀匹配的镜像
+            # 匹配规则：前缀 + "-latest" 或 前缀 + "-" + 日期时间（12位数字）
+            pattern = re.compile(rf"^{re.escape(image_name_prefix)}(-latest|-(\d{{12}}))$")
+            matched_images = []
+            
+            for image in all_images:
+                image_name = image.get("ImageName", "")
+                if pattern.match(image_name):
+                    matched_images.append(image)
+            
+            # 按创建时间排序（最新的在前）
+            matched_images.sort(
+                key=lambda x: x.get("CreationTime", ""), reverse=True
+            )
+            
+            return matched_images
+
+        return []
+    except (subprocess.SubprocessError, json.JSONDecodeError, KeyError) as e:
+        print(f"Error listing images by prefix: {e}", file=sys.stderr)
+        return []
+
+
 def delete_image(region_id: str, image_id: str) -> bool:
     """删除镜像"""
     print(f"Deleting image {image_id}...", file=sys.stderr)
@@ -1238,23 +1302,57 @@ def cleanup_old_images(
                 print(f"Warning: Failed to parse creation time {creation_time}: {e}, will delete image", file=sys.stderr)
                 delete_image(region_id, image_id)
     
-    # 重新查询所有同名镜像（重命名后的镜像不会出现在这里）
-    # 如果还有超出保留数量的，删除多余的
-    remaining_images = list_images_by_name(region_id, image_name)
+    # 提取镜像名称前缀（去掉 -latest 后缀）
+    if image_name.endswith("-latest"):
+        image_name_prefix = image_name[:-7]  # 去掉 "-latest" (7个字符)
+    else:
+        image_name_prefix = image_name
     
-    if len(remaining_images) <= keep_count:
-        print(f"After renaming, {len(remaining_images)} image(s) found with name {image_name}, no deletion needed (keeping {keep_count})", file=sys.stderr)
+    # 查询所有前缀相同的镜像（包括 -latest 和日期时间后缀的）
+    all_images_with_prefix = list_images_by_prefix(region_id, image_name_prefix)
+    
+    # 排除新创建的镜像（如果指定）
+    if exclude_image_id:
+        all_images_with_prefix = [img for img in all_images_with_prefix if img.get("ImageId") != exclude_image_id]
+    
+    # 统计总数
+    total_count = len(all_images_with_prefix)
+    print(f"Total images with prefix {image_name_prefix}: {total_count} (including -latest and date-suffixed)", file=sys.stderr)
+    
+    if total_count <= keep_count:
+        print(f"Total image count ({total_count}) is within limit ({keep_count}), no deletion needed", file=sys.stderr)
         return
     
     # 按创建时间排序（最新的在前）
-    remaining_images.sort(
+    all_images_with_prefix.sort(
         key=lambda x: x.get("CreationTime", ""), reverse=True
     )
     
-    # 删除超出保留数量的旧镜像
-    images_to_delete = remaining_images[keep_count:]
-    print(f"Found {len(remaining_images)} images after renaming, keeping {keep_count} latest, deleting {len(images_to_delete)} old ones", file=sys.stderr)
+    # 分离 -latest 镜像和日期时间后缀镜像
+    latest_images = [img for img in all_images_with_prefix if img.get("ImageName", "").endswith("-latest")]
+    dated_images = [img for img in all_images_with_prefix if not img.get("ImageName", "").endswith("-latest")]
     
+    print(f"Found {len(latest_images)} -latest image(s) and {len(dated_images)} date-suffixed image(s)", file=sys.stderr)
+    
+    # 计算需要删除的数量
+    # 保留策略：优先保留 -latest 镜像，然后保留最新的日期时间后缀镜像
+    # 如果 -latest 镜像数量已经达到 keep_count，只删除日期时间后缀镜像
+    # 否则，保留最新的 keep_count 个镜像（包括 -latest）
+    
+    if len(latest_images) >= keep_count:
+        # 如果 -latest 镜像已经达到或超过保留数量，只保留最新的 keep_count 个 -latest 镜像
+        # 删除所有日期时间后缀镜像和多余的 -latest 镜像
+        images_to_keep = latest_images[:keep_count]
+        images_to_delete = [img for img in all_images_with_prefix if img not in images_to_keep]
+    else:
+        # 保留所有 -latest 镜像，然后保留最新的日期时间后缀镜像，使总数不超过 keep_count
+        remaining_slots = keep_count - len(latest_images)
+        images_to_keep = latest_images + dated_images[:remaining_slots]
+        images_to_delete = [img for img in all_images_with_prefix if img not in images_to_keep]
+    
+    print(f"Keeping {len(images_to_keep)} image(s), deleting {len(images_to_delete)} old one(s)", file=sys.stderr)
+    
+    # 删除多余的镜像（只删除日期时间后缀的镜像，不删除 -latest 镜像）
     for image in images_to_delete:
         image_id = image.get("ImageId", "")
         image_name_display = image.get("ImageName", "")
