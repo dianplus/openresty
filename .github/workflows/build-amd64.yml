@@ -191,6 +191,8 @@ jobs:
           ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
           ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
           ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          # 优先使用镜像族系（推荐），如果未设置则使用 ALIYUN_IMAGE_ID 作为后备
+          ALIYUN_IMAGE_FAMILY: ${{ vars.ALIYUN_AMD64_IMAGE_FAMILY }}
           ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
           ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}

@@ -84,9 +84,50 @@ if [[ -z "${ALIYUN_SECURITY_GROUP_ID}" ]]; then
   exit 1
 fi
 
+# 获取镜像 ID（支持镜像族系）
+IMAGE_FAMILY="${ALIYUN_IMAGE_FAMILY:-}"
+
+if [[ -n "${IMAGE_FAMILY}" ]]; then
+  # 方式1：优先从镜像族系获取
+  echo "Getting latest image from family: ${IMAGE_FAMILY}" >&2
+  IMAGE_INFO=$(aliyun ecs DescribeImageFromFamily \
+    --RegionId "${ALIYUN_REGION_ID}" \
+    --ImageFamily "${IMAGE_FAMILY}" 2>&1)
+  EXIT_CODE=$?
+  
+  if [[ ${EXIT_CODE} -eq 0 ]]; then
+    # 解析 JSON 获取 ImageId
+    # 优先使用 jq（如果可用），否则使用 grep/sed
+    if command -v jq &> /dev/null; then
+      IMAGE_ID=$(echo "${IMAGE_INFO}" | jq -r '.Image.ImageId // empty' 2>/dev/null)
+    else
+      # 使用 grep 和 sed 解析 JSON
+      IMAGE_ID=$(echo "${IMAGE_INFO}" | grep -o '"ImageId"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"ImageId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+    fi
+    
+    if [[ -n "${IMAGE_ID}" && "${IMAGE_ID}" != "null" && "${IMAGE_ID}" != "empty" ]]; then
+      echo "Found latest image from family ${IMAGE_FAMILY}: ${IMAGE_ID}" >&2
+      ALIYUN_IMAGE_ID="${IMAGE_ID}"
+    else
+      echo "Warning: Failed to parse image ID from family ${IMAGE_FAMILY}, falling back to ALIYUN_IMAGE_ID" >&2
+    fi
+  else
+    echo "Warning: Failed to query image from family ${IMAGE_FAMILY} (exit code: ${EXIT_CODE}), falling back to ALIYUN_IMAGE_ID" >&2
+    if [[ -n "${IMAGE_INFO}" ]]; then
+      echo "Error output: ${IMAGE_INFO}" >&2
+    fi
+  fi
+fi
+
+# 方式2：从环境变量直接获取镜像 ID（向后兼容）
 if [[ -z "${ALIYUN_IMAGE_ID}" ]]; then
-  echo "Error: ALIYUN_IMAGE_ID is required" >&2
-  exit 1
+  if [[ -n "${IMAGE_FAMILY}" ]]; then
+    echo "Error: Failed to get image from family ${IMAGE_FAMILY} and ALIYUN_IMAGE_ID is not set" >&2
+    exit 1
+  else
+    echo "Error: Either ALIYUN_IMAGE_FAMILY or ALIYUN_IMAGE_ID must be set" >&2
+    exit 1
+  fi
 fi
 
 if [[ -z "${ALIYUN_VSWITCH_ID}" ]]; then

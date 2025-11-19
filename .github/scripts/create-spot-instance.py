@@ -73,6 +73,85 @@ def encode_user_data(user_data: str) -> str:
         error_exit(f"Failed to encode User Data to base64: {e}")
 
 
+def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
+    """通过镜像族系获取最新的镜像信息"""
+    cmd = [
+        "aliyun",
+        "ecs",
+        "DescribeImageFromFamily",
+        "--RegionId",
+        region_id,
+        "--ImageFamily",
+        image_family,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=30
+        )
+
+        if result.returncode != 0:
+            print(f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
+            return None
+
+        if result.stdout:
+            try:
+                data = json.loads(result.stdout)
+                
+                # DescribeImageFromFamily 返回的镜像信息在 Image 字段中
+                if "Image" in data and data["Image"]:
+                    image = data["Image"]
+                    image_id = image.get("ImageId", "")
+                    
+                    if image_id:
+                        print(f"Found latest image from family {image_family}: {image_id}", file=sys.stderr)
+                        return {"ImageId": image_id}
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
+                return None
+
+        return None
+    except Exception as e:
+        print(f"Warning: Failed to query image from family {image_family}: {e}", file=sys.stderr)
+        return None
+
+
+def get_image_id(region_id: str, arch: str) -> str:
+    """
+    获取镜像 ID 的统一函数
+    
+    支持多种方式（按优先级）：
+    1. 从镜像族系获取（ALIYUN_IMAGE_FAMILY）
+    2. 从环境变量直接获取镜像 ID（ALIYUN_IMAGE_ID，向后兼容）
+    
+    返回镜像 ID
+    """
+    # 方式1：优先从镜像族系获取
+    image_family = os.environ.get("ALIYUN_IMAGE_FAMILY")
+    
+    if image_family:
+        print(f"Getting latest image from family: {image_family}", file=sys.stderr)
+        image_info = get_image_from_family(region_id, image_family)
+        
+        if image_info and image_info.get("ImageId"):
+            return image_info["ImageId"]
+        else:
+            print(f"Warning: Failed to get image from family {image_family}, falling back to ALIYUN_IMAGE_ID", file=sys.stderr)
+    
+    # 方式2：从环境变量直接获取镜像 ID（向后兼容）
+    image_id = os.environ.get("ALIYUN_IMAGE_ID")
+    
+    if not image_id:
+        error_exit(
+            "Either ALIYUN_IMAGE_FAMILY or ALIYUN_IMAGE_ID must be set. "
+            "If using ALIYUN_IMAGE_ID, it must be provided."
+        )
+    
+    return image_id
+
+
 def get_vswitch_id(zone_id: str) -> Optional[str]:
     """根据可用区 ID 获取 VSwitch ID"""
     match = re.search(r"-([a-z])$", zone_id)
@@ -299,7 +378,6 @@ def main():
     region_id = get_env_var("ALIYUN_REGION_ID")
     vpc_id = get_env_var("ALIYUN_VPC_ID")
     security_group_id = get_env_var("ALIYUN_SECURITY_GROUP_ID")
-    image_id = get_env_var("ALIYUN_IMAGE_ID")
     vswitch_id = os.environ.get("ALIYUN_VSWITCH_ID")
     key_pair_name = os.environ.get("ALIYUN_KEY_PAIR_NAME")
     ram_role_name = os.environ.get("ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME")
@@ -310,6 +388,9 @@ def main():
     arch = os.environ.get("ARCH", "amd64")
     spot_price_limit = os.environ.get("SPOT_PRICE_LIMIT")
     candidates_file = os.environ.get("CANDIDATES_FILE")
+    
+    # 使用统一函数获取镜像 ID（支持镜像族系）
+    image_id = get_image_id(region_id, arch)
 
     # 配置 Aliyun CLI 环境变量
     os.environ["ALIBABA_CLOUD_ACCESS_KEY_ID"] = access_key_id

@@ -333,6 +333,170 @@ echo "Instance will be automatically deleted after image creation completes"
     return script
 
 
+def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
+    """通过镜像族系获取最新的镜像信息"""
+    cmd = [
+        "aliyun",
+        "ecs",
+        "DescribeImageFromFamily",
+        "--RegionId",
+        region_id,
+        "--ImageFamily",
+        image_family,
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=30
+        )
+
+        if result.returncode != 0:
+            print(f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
+            return None
+
+        if result.stdout:
+            try:
+                data = json.loads(result.stdout)
+                
+                # DescribeImageFromFamily 返回的镜像信息在 Image 字段中
+                if "Image" in data and data["Image"]:
+                    image = data["Image"]
+                    image_id = image.get("ImageId", "")
+                    image_name = image.get("ImageName", "")
+                    creation_time = image.get("CreationTime", "")
+                    
+                    if image_id:
+                        print(f"Found latest image from family {image_family}: {image_id} ({image_name})", file=sys.stderr)
+                        return {
+                            "ImageId": image_id,
+                            "ImageName": image_name,
+                            "CreationTime": creation_time,
+                        }
+                    else:
+                        print(f"Warning: Image from family {image_family} has no ImageId", file=sys.stderr)
+                else:
+                    print(f"Warning: No image found in response for family {image_family}", file=sys.stderr)
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
+                if result.stderr:
+                    print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
+                return None
+
+        return None
+    except subprocess.TimeoutExpired:
+        print(f"Warning: Query image from family {image_family} timeout", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Warning: Failed to query image from family {image_family}: {e}", file=sys.stderr)
+        return None
+
+
+def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
+    """通过镜像 ID 获取镜像详细信息"""
+    # 尝试两种参数格式：直接字符串，或者 JSON 数组
+    for image_id_param in [image_id, json.dumps([image_id])]:
+        cmd = [
+            "aliyun",
+            "ecs",
+            "DescribeImages",
+            "--RegionId",
+            region_id,
+            "--ImageId",
+            image_id_param,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=False, timeout=30
+            )
+
+            if result.returncode != 0:
+                continue
+
+            if result.stdout:
+                try:
+                    data = json.loads(result.stdout)
+
+                    if (
+                        "Images" in data
+                        and "Image" in data["Images"]
+                        and len(data["Images"]["Image"]) > 0
+                    ):
+                        image = data["Images"]["Image"][0]
+                        image_id_found = image.get("ImageId", "")
+                        image_name = image.get("ImageName", "")
+                        creation_time = image.get("CreationTime", "")
+                        
+                        if image_id_found == image_id:
+                            return {
+                                "ImageId": image_id,
+                                "ImageName": image_name,
+                                "CreationTime": creation_time,
+                            }
+                except json.JSONDecodeError:
+                    continue
+
+        except subprocess.TimeoutExpired:
+            continue
+        except Exception:
+            continue
+
+    return None
+
+
+def get_base_image_info(region_id: str, arch: str) -> dict:
+    """
+    获取基础镜像信息的统一函数
+    
+    支持多种方式（按优先级）：
+    1. 从镜像族系获取（ALIYUN_IMAGE_FAMILY）
+    2. 从环境变量直接获取镜像 ID（BASE_IMAGE_ID，向后兼容）
+    
+    返回包含 ImageId, ImageName, CreationTime 的字典
+    """
+    # 方式1：优先从镜像族系获取
+    image_family = os.environ.get("ALIYUN_IMAGE_FAMILY")
+    
+    if image_family:
+        print(f"Getting latest image from family: {image_family}", file=sys.stderr)
+        image_info = get_image_from_family(region_id, image_family)
+        
+        if image_info:
+            return image_info
+        else:
+            print(f"Warning: Failed to get image from family {image_family}, falling back to BASE_IMAGE_ID", file=sys.stderr)
+    
+    # 方式2：从环境变量直接获取镜像 ID（向后兼容）
+    image_id = os.environ.get("BASE_IMAGE_ID")
+    image_name = os.environ.get("BASE_IMAGE_NAME", "")
+    image_creation_time = os.environ.get("BASE_IMAGE_CREATION_TIME", "")
+    
+    if not image_id:
+        error_exit(
+            "Either ALIYUN_IMAGE_FAMILY or BASE_IMAGE_ID must be set. "
+            "If using BASE_IMAGE_ID, it must be provided."
+        )
+    
+    # 如果只有镜像 ID，尝试查询镜像的详细信息
+    if not image_name or not image_creation_time:
+        print(f"Querying image details for {image_id}...", file=sys.stderr)
+        image_info = get_image_info_by_id(region_id, image_id)
+        if image_info:
+            image_name = image_info.get("ImageName", image_name)
+            image_creation_time = image_info.get("CreationTime", image_creation_time)
+            print(f"Found image details: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
+        else:
+            print(f"Warning: Failed to query image details for {image_id}, using provided values", file=sys.stderr)
+    
+    return {
+        "ImageId": image_id,
+        "ImageName": image_name,
+        "CreationTime": image_creation_time,
+    }
+
+
 def get_image_size(region_id: str, image_id: str) -> Optional[int]:
     """查询镜像大小（单位：GB）"""
     # 尝试两种参数格式：直接字符串，或者 JSON 数组（虽然参数名是单数，但可能支持数组格式）
@@ -1063,9 +1227,6 @@ def main():
     """主函数"""
     # 从环境变量获取参数
     region_id = get_env_var("ALIYUN_REGION_ID")
-    image_id = get_env_var("BASE_IMAGE_ID")
-    image_name = get_env_var("BASE_IMAGE_NAME", "")
-    image_creation_time = get_env_var("BASE_IMAGE_CREATION_TIME", "")
     vpc_id = get_env_var("ALIYUN_VPC_ID")
     security_group_id = get_env_var("ALIYUN_SECURITY_GROUP_ID")
     vswitch_id = os.environ.get("ALIYUN_VSWITCH_ID")
@@ -1080,6 +1241,14 @@ def main():
     # 验证架构参数
     if arch.lower() not in ("amd64", "arm64"):
         error_exit(f"ARCH must be either 'amd64' or 'arm64', got: {arch}")
+
+    # 使用统一函数获取基础镜像信息
+    base_image_info = get_base_image_info(region_id, arch)
+    image_id = base_image_info["ImageId"]
+    image_name = base_image_info.get("ImageName", "")
+    image_creation_time = base_image_info.get("CreationTime", "")
+    
+    print(f"Using base image: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
 
     # 检查 Aliyun CLI 是否已安装
     try:
