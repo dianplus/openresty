@@ -1074,6 +1074,7 @@ def main():
             # 创建实例（支持磁盘类型降级）
             disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
             instance_created = False
+            last_error = None
 
             for disk_category in disk_categories:
                 print(
@@ -1113,22 +1114,34 @@ def main():
                             f"Failed to extract instance ID, trying next disk category...",
                             file=sys.stderr,
                         )
+                        last_error = response
                 else:
-                    # 检查错误信息，如果是磁盘类型不支持，尝试下一个
+                    # 记录错误信息，继续尝试下一个磁盘类型
+                    last_error = response
                     if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
                         print(
                             f"Disk category {disk_category} not supported, trying next...",
                             file=sys.stderr,
                         )
-                        continue
                     else:
-                        # 其他错误，不继续尝试
-                        break
+                        # 其他错误，也继续尝试下一个磁盘类型（可能是临时错误）
+                        print(
+                            f"Failed to create instance with disk category {disk_category} (exit code: {exit_code}), trying next...",
+                            file=sys.stderr,
+                        )
+                        if response:
+                            # 只输出错误的前200个字符，避免日志过长
+                            error_preview = response[:200] + ("..." if len(response) > 200 else "")
+                            print(f"Error preview: {error_preview}", file=sys.stderr)
 
             if instance_created:
                 break
             else:
                 print(f"Failed to create instance (attempt {candidate_count}): All disk categories failed", file=sys.stderr)
+                if last_error:
+                    # 只输出错误的前200个字符，避免日志过长
+                    error_preview = last_error[:200] + ("..." if len(last_error) > 200 else "")
+                    print(f"Last error preview: {error_preview}", file=sys.stderr)
 
         if not instance_id:
             error_exit(f"Failed to create Spot instance after {candidate_count} attempts")
@@ -1187,18 +1200,23 @@ def main():
                     )
                     last_error = response
             else:
-                # 检查错误信息，如果是磁盘类型不支持，尝试下一个
+                # 记录错误信息，继续尝试下一个磁盘类型
+                last_error = response
                 if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
                     print(
                         f"Disk category {disk_category} not supported, trying next...",
                         file=sys.stderr,
                     )
-                    last_error = response
-                    continue
                 else:
-                    # 其他错误，不继续尝试
-                    last_error = response
-                    break
+                    # 其他错误，也继续尝试下一个磁盘类型（可能是临时错误）
+                    print(
+                        f"Failed to create instance with disk category {disk_category} (exit code: {exit_code}), trying next...",
+                        file=sys.stderr,
+                    )
+                    if response:
+                        # 只输出错误的前200个字符，避免日志过长
+                        error_preview = response[:200] + ("..." if len(response) > 200 else "")
+                        print(f"Error preview: {error_preview}", file=sys.stderr)
 
         # 所有磁盘类型都失败了
         if not instance_created:
