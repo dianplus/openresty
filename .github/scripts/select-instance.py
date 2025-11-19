@@ -347,23 +347,34 @@ def main():
             f"No instances found matching minimum requirements ({min_cpu}c{min_mem}g)"
         )
 
-    # 提取第一个结果（价格最优）
-    instance_type, zone_id, price_per_core, cpu_cores = candidates[0]
+    # 选择第一个有 VSwitch ID 的结果（价格最优且可用区有 VSwitch）
+    instance_type = None
+    zone_id = None
+    price_per_core = None
+    cpu_cores = None
+    vswitch_id = None
+    
+    for cand_instance_type, cand_zone_id, cand_price_per_core, cand_cpu_cores in candidates:
+        cand_vswitch_id = get_vswitch_id(cand_zone_id)
+        if cand_vswitch_id:
+            # 找到第一个有 VSwitch ID 的候选结果
+            instance_type = cand_instance_type
+            zone_id = cand_zone_id
+            price_per_core = cand_price_per_core
+            cpu_cores = cand_cpu_cores
+            vswitch_id = cand_vswitch_id
+            break
+    
+    # 如果所有候选结果都没有 VSwitch ID，报错
+    if not instance_type:
+        error_exit(
+            "No instances found with VSwitch ID configured. "
+            "Please ensure VSwitch IDs are configured for at least one zone."
+        )
 
     # 计算总价和价格限制
     total_price = price_per_core * cpu_cores
     spot_price_limit = total_price * 1.2
-
-    # 根据可用区映射 VSwitch ID
-    vswitch_id = get_vswitch_id(zone_id)
-    if not vswitch_id:
-        zone_suffix = (
-            re.search(r"-([a-z])$", zone_id).group(1).upper()
-            if re.search(r"-([a-z])$", zone_id)
-            else "?"
-        )
-        vswitch_var = f"ALIYUN_VSWITCH_ID_{zone_suffix}"
-        error_exit(f"VSwitch ID not found for zone {zone_id} (variable: {vswitch_var})")
 
     # 创建候选结果文件
     # 格式：INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES
