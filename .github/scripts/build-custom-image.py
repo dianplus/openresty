@@ -333,6 +333,60 @@ echo "Instance will be automatically deleted after image creation completes"
     return script
 
 
+def get_image_size(region_id: str, image_id: str) -> Optional[int]:
+    """查询镜像大小（单位：GB）"""
+    # 尝试两种参数格式：先尝试 JSON 数组，失败则尝试直接字符串
+    for image_ids_param in [json.dumps([image_id]), image_id]:
+        cmd = [
+            "aliyun",
+            "ecs",
+            "DescribeImages",
+            "--RegionId",
+            region_id,
+            "--ImageIds",
+            image_ids_param,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=False, timeout=30
+            )
+
+            # 即使返回码非零，也尝试解析输出
+            if result.stdout:
+                try:
+                    data = json.loads(result.stdout)
+
+                    if (
+                        "Images" in data
+                        and "Image" in data["Images"]
+                        and len(data["Images"]["Image"]) > 0
+                    ):
+                        image = data["Images"]["Image"][0]
+                        # Size 字段单位是字节，需要转换为 GB
+                        size_bytes = image.get("Size", 0)
+                        if size_bytes:
+                            # 转换为 GB（向上取整）
+                            size_gb = (size_bytes + 1024 * 1024 * 1024 - 1) // (1024 * 1024 * 1024)
+                            return size_gb
+                except json.JSONDecodeError:
+                    # JSON 解析失败，继续尝试下一种格式
+                    continue
+
+            # 如果返回码为 0 但没有数据，继续尝试下一种格式
+            if result.returncode == 0:
+                continue
+
+        except subprocess.TimeoutExpired:
+            print("Warning: Query image size timeout", file=sys.stderr)
+            continue
+        except Exception as e:
+            print(f"Warning: Failed to query image size: {e}", file=sys.stderr)
+            continue
+
+    return None
+
+
 def get_supported_disk_category(
     region_id: str, instance_type: str, zone_id: Optional[str] = None
 ) -> str:
@@ -422,6 +476,17 @@ def create_instance(
     if not system_disk_category:
         system_disk_category = get_supported_disk_category(region_id, instance_type)
 
+    # 查询镜像大小，动态计算系统盘大小
+    image_size_gb = get_image_size(region_id, image_id)
+    if image_size_gb:
+        # 系统盘大小 = 镜像大小 + 10GB（用于安装工具和临时文件），最小 40GB
+        system_disk_size = max(image_size_gb + 10, 40)
+        print(f"Image size: {image_size_gb}GB, setting system disk size to {system_disk_size}GB", file=sys.stderr)
+    else:
+        # 如果查询失败，使用默认值 40GB（足够大多数镜像使用）
+        system_disk_size = 40
+        print(f"Failed to query image size, using default system disk size: {system_disk_size}GB", file=sys.stderr)
+
     cmd = [
         "aliyun",
         "ecs",
@@ -443,7 +508,7 @@ def create_instance(
         "--SystemDisk.Category",
         system_disk_category,
         "--SystemDisk.Size",
-        "20",  # 20GB 系统盘（最小值，足够安装工具）
+        str(system_disk_size),
         "--SecurityEnhancementStrategy",
         "Deactive",
         "--UserData",
