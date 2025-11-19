@@ -898,6 +898,7 @@ def main():
     image_name_prefix = get_env_var("IMAGE_NAME_PREFIX")
     arch = os.environ.get("ARCH", "amd64")
     key_pair_name = os.environ.get("ALIYUN_KEY_PAIR_NAME")
+    ram_role_name = os.environ.get("ALIYUN_RAM_ROLE_NAME")
     spot_price_limit = os.environ.get("SPOT_PRICE_LIMIT")
     candidates_file = os.environ.get("CANDIDATES_FILE")
 
