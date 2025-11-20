@@ -1,0 +1,423 @@
+name: Build Custom Images
+
+on:
+  schedule:
+    # 每天 UTC 时间 02:00 自动构建（北京时间 10:00）
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制构建（忽略版本检查）'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+  ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
+  ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+  ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B || vars.ALIYUN_VSWITCH_ID_G || vars.ALIYUN_VSWITCH_ID_H }}
+  IMAGE_NAME_PREFIX: ${{ vars.IMAGE_NAME_PREFIX || 'github-runner-ubuntu24' }}
+  PUBLISH_TO_MARKETPLACE: ${{ vars.PUBLISH_TO_MARKETPLACE || 'false' }}
+  KEEP_IMAGE_COUNT: ${{ vars.KEEP_IMAGE_COUNT || '1' }}
+  # 构建镜像的资源需求（较低，只需要安装工具）
+  IMAGE_BUILD_MIN_CPU: ${{ vars.IMAGE_BUILD_MIN_CPU || '2' }}
+  IMAGE_BUILD_MAX_CPU: ${{ vars.IMAGE_BUILD_MAX_CPU || '8' }}
+
+jobs:
+  build-amd64-image:
+    name: Build AMD64 Custom Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Configure Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: '3.1.2'
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID }}
+
+      - name: Query Latest Ubuntu 24 Image
+        id: query-image
+        env:
+          ARCH: amd64
+        run: |
+          OUTPUT=$(python3 .github/scripts/query-ubuntu-image.py)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+            fi
+          done <<< "${OUTPUT}"
+
+      - name: Download spot-instance-advisor
+        id: download-advisor
+        run: |
+          # 下载 spot-instance-advisor 工具
+          echo "Fetching latest release version..." >&2
+          ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+          if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
+            echo "Warning: Failed to fetch latest version, using fallback: v1.0.1" >&2
+            ADVISOR_VERSION="v1.0.1"
+          fi
+          echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
+          echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
+          
+          # 下载二进制文件
+          ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${ADVISOR_VERSION}/spot-instance-advisor-linux-amd64"
+          echo "Downloading from: ${ADVISOR_URL}" >&2
+          curl -L -f -o spot-instance-advisor "${ADVISOR_URL}" || {
+            echo "Error: Failed to download spot-instance-advisor from releases" >&2
+            exit 1
+          }
+          chmod +x spot-instance-advisor
+          echo "advisor_path=$(pwd)/spot-instance-advisor" >> $GITHUB_OUTPUT
+          ./spot-instance-advisor --version || echo "Warning: Version check failed" >&2
+
+      - name: Select Optimal Instance
+        id: select-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ARCH: amd64
+          SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
+          MIN_CPU: ${{ env.IMAGE_BUILD_MIN_CPU }}
+          MAX_CPU: ${{ env.IMAGE_BUILD_MAX_CPU }}
+          # VSwitch ID 变量映射（根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+        run: |
+          # 调用 select-instance.py 脚本
+          OUTPUT=$(python3 .github/scripts/select-instance.py)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          CPU_CORES_DEFAULT=2  # 默认值，防止 CPU_CORES 为空
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              # 如果是 CANDIDATES_FILE，需要导出到环境变量供后续步骤使用
+              if [[ "${key}" == "CANDIDATES_FILE" ]]; then
+                echo "${key}=${value}" >> $GITHUB_ENV
+              fi
+              # 如果是 CPU_CORES，更新默认值
+              if [[ "${key}" == "CPU_CORES" ]]; then
+                CPU_CORES_DEFAULT="${value}"
+              fi
+            fi
+          done <<< "${OUTPUT}"
+          
+          # 确保 CPU_CORES 有值（如果脚本没有输出，使用默认值）
+          if ! grep -q "^CPU_CORES=" $GITHUB_OUTPUT 2>/dev/null; then
+            echo "CPU_CORES=${CPU_CORES_DEFAULT}" >> $GITHUB_OUTPUT
+            echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
+          fi
+
+      - name: Build Custom Image
+        id: build-image
+        env:
+          ARCH: amd64
+          BASE_IMAGE_ID: ${{ steps.query-image.outputs.IMAGE_ID }}
+          BASE_IMAGE_NAME: ${{ steps.query-image.outputs.IMAGE_NAME }}
+          BASE_IMAGE_CREATION_TIME: ${{ steps.query-image.outputs.CREATION_TIME }}
+          INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
+          ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
+          SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
+          CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
+          FORCE_BUILD: ${{ inputs.force_build || 'false' }}
+          KEEP_IMAGE_COUNT: ${{ env.KEEP_IMAGE_COUNT }}
+          # VSwitch ID 变量映射（用于重试机制，根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
+        run: |
+          # 如果强制构建，跳过版本检查
+          if [[ "${FORCE_BUILD}" == "true" ]]; then
+            echo "Force build enabled, skipping version check"
+            # 删除版本检查逻辑（通过设置不存在的镜像 ID）
+            export BASE_IMAGE_ID="${BASE_IMAGE_ID}-force"
+          fi
+          
+          OUTPUT=$(python3 .github/scripts/build-custom-image.py)
+          
+          # 解析输出
+          SKIP_BUILD=false
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              if [[ "${key}" == "SKIP_BUILD" && "${value}" == "true" ]]; then
+                SKIP_BUILD=true
+              fi
+            fi
+          done <<< "${OUTPUT}"
+          
+          if [[ "${SKIP_BUILD}" == "true" ]]; then
+            echo "Image build skipped (version unchanged)"
+            exit 0
+          fi
+
+      - name: Publish to Marketplace (Optional)
+        if: env.PUBLISH_TO_MARKETPLACE == 'true' && steps.build-image.outputs.SKIP_BUILD != 'true'
+        env:
+          IMAGE_ID: ${{ steps.build-image.outputs.IMAGE_ID }}
+          IMAGE_NAME: ${{ steps.build-image.outputs.IMAGE_NAME }}
+          IMAGE_DESCRIPTION: ${{ steps.build-image.outputs.IMAGE_NAME }}
+          PUBLISH_PUBLIC: ${{ vars.PUBLISH_PUBLIC || 'false' }}
+          SHARE_ACCOUNT_IDS: ${{ vars.SHARE_ACCOUNT_IDS || '' }}
+        run: |
+          python3 .github/scripts/publish-image-to-marketplace.py
+
+  build-arm64-image:
+    name: Build ARM64 Custom Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Configure Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: '3.1.2'
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID }}
+
+      - name: Query Latest Ubuntu 24 Image
+        id: query-image
+        env:
+          ARCH: arm64
+        run: |
+          OUTPUT=$(python3 .github/scripts/query-ubuntu-image.py)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+            fi
+          done <<< "${OUTPUT}"
+
+      - name: Download spot-instance-advisor
+        id: download-advisor
+        run: |
+          # 下载 spot-instance-advisor 工具
+          echo "Fetching latest release version..." >&2
+          ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+          if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
+            echo "Warning: Failed to fetch latest version, using fallback: v1.0.1" >&2
+            ADVISOR_VERSION="v1.0.1"
+          fi
+          echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
+          echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
+          
+          # 下载二进制文件
+          ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${ADVISOR_VERSION}/spot-instance-advisor-linux-amd64"
+          echo "Downloading from: ${ADVISOR_URL}" >&2
+          curl -L -f -o spot-instance-advisor "${ADVISOR_URL}" || {
+            echo "Error: Failed to download spot-instance-advisor from releases" >&2
+            exit 1
+          }
+          chmod +x spot-instance-advisor
+          echo "advisor_path=$(pwd)/spot-instance-advisor" >> $GITHUB_OUTPUT
+          ./spot-instance-advisor --version || echo "Warning: Version check failed" >&2
+
+      - name: Select Optimal Instance
+        id: select-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ARCH: arm64
+          SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
+          MIN_CPU: ${{ env.IMAGE_BUILD_MIN_CPU }}
+          MAX_CPU: ${{ env.IMAGE_BUILD_MAX_CPU }}
+          # VSwitch ID 变量映射（根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+        run: |
+          # 调用 select-instance.py 脚本
+          OUTPUT=$(python3 .github/scripts/select-instance.py)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          CPU_CORES_DEFAULT=2  # 默认值，防止 CPU_CORES 为空
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              # 如果是 CANDIDATES_FILE，需要导出到环境变量供后续步骤使用
+              if [[ "${key}" == "CANDIDATES_FILE" ]]; then
+                echo "${key}=${value}" >> $GITHUB_ENV
+              fi
+              # 如果是 CPU_CORES，更新默认值
+              if [[ "${key}" == "CPU_CORES" ]]; then
+                CPU_CORES_DEFAULT="${value}"
+              fi
+            fi
+          done <<< "${OUTPUT}"
+          
+          # 确保 CPU_CORES 有值（如果脚本没有输出，使用默认值）
+          if ! grep -q "^CPU_CORES=" $GITHUB_OUTPUT 2>/dev/null; then
+            echo "CPU_CORES=${CPU_CORES_DEFAULT}" >> $GITHUB_OUTPUT
+            echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
+          fi
+
+      - name: Build Custom Image
+        id: build-image
+        env:
+          ARCH: arm64
+          BASE_IMAGE_ID: ${{ steps.query-image.outputs.IMAGE_ID }}
+          BASE_IMAGE_NAME: ${{ steps.query-image.outputs.IMAGE_NAME }}
+          BASE_IMAGE_CREATION_TIME: ${{ steps.query-image.outputs.CREATION_TIME }}
+          INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
+          ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
+          SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
+          CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
+          FORCE_BUILD: ${{ inputs.force_build || 'false' }}
+          KEEP_IMAGE_COUNT: ${{ env.KEEP_IMAGE_COUNT }}
+          # VSwitch ID 变量映射（用于重试机制，根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
+        run: |
+          # 如果强制构建，跳过版本检查
+          if [[ "${FORCE_BUILD}" == "true" ]]; then
+            echo "Force build enabled, skipping version check"
+            # 删除版本检查逻辑（通过设置不存在的镜像 ID）
+            export BASE_IMAGE_ID="${BASE_IMAGE_ID}-force"
+          fi
+          
+          OUTPUT=$(python3 .github/scripts/build-custom-image.py)
+          
+          # 解析输出
+          SKIP_BUILD=false
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              if [[ "${key}" == "SKIP_BUILD" && "${value}" == "true" ]]; then
+                SKIP_BUILD=true
+              fi
+            fi
+          done <<< "${OUTPUT}"
+          
+          if [[ "${SKIP_BUILD}" == "true" ]]; then
+            echo "Image build skipped (version unchanged)"
+            exit 0
+          fi
+
+      - name: Publish to Marketplace (Optional)
+        if: env.PUBLISH_TO_MARKETPLACE == 'true' && steps.build-image.outputs.SKIP_BUILD != 'true'
+        env:
+          IMAGE_ID: ${{ steps.build-image.outputs.IMAGE_ID }}
+          IMAGE_NAME: ${{ steps.build-image.outputs.IMAGE_NAME }}
+          IMAGE_DESCRIPTION: ${{ steps.build-image.outputs.IMAGE_NAME }}
+          PUBLISH_PUBLIC: ${{ vars.PUBLISH_PUBLIC || 'false' }}
+          SHARE_ACCOUNT_IDS: ${{ vars.SHARE_ACCOUNT_IDS || '' }}
+        run: |
+          python3 .github/scripts/publish-image-to-marketplace.py
+
