@@ -165,6 +165,28 @@ jobs:
             echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
           fi
 
+      - name: Get Custom Image ID
+        id: get-custom-image
+        env:
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          IMAGE_NAME: github-runner-ubuntu24-amd64-latest
+          ARCH: amd64
+        run: |
+          # 尝试获取预装工具的自定义镜像 ID
+          # 如果镜像不存在，脚本会失败，我们捕获错误并继续使用基础镜像
+          if OUTPUT=$(python3 .github/scripts/get-image-id-by-name.py 2>&1); then
+            while IFS='=' read -r key value; do
+              if [[ -n "${key}" && -n "${value}" ]]; then
+                echo "${key}=${value}" >> $GITHUB_OUTPUT
+              fi
+            done <<< "${OUTPUT}"
+            echo "Found custom image with pre-installed tools" >&2
+          else
+            echo "Custom image not found, will use base image" >&2
+            echo "IMAGE_ID=" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+
       - name: Generate User Data
         id: user-data
         env:
@@ -191,9 +213,10 @@ jobs:
           ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
           ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
           ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
-          # 优先使用镜像族系（推荐），如果未设置则使用 ALIYUN_IMAGE_ID 作为后备
-          ALIYUN_IMAGE_FAMILY: ${{ vars.ALIYUN_AMD64_IMAGE_FAMILY }}
-          ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
+          # 优先使用预装工具的自定义镜像（推荐），如果未找到则回退到基础镜像
+          # 如果自定义镜像存在，直接使用；否则使用镜像族系或直接指定的镜像 ID
+          ALIYUN_IMAGE_ID: ${{ steps.get-custom-image.outputs.IMAGE_ID != '' && steps.get-custom-image.outputs.IMAGE_ID || vars.ALIYUN_AMD64_IMAGE_ID }}
+          ALIYUN_IMAGE_FAMILY: ${{ steps.get-custom-image.outputs.IMAGE_ID == '' && vars.ALIYUN_AMD64_IMAGE_FAMILY || '' }}
           ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
           ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
@@ -312,16 +335,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Aliyun CLI
+      - name: Verify and Configure Tools
+        id: verify-tools
+        run: |
+          # 检查 Aliyun CLI 是否已安装（预装镜像应该已包含）
+          if command -v aliyun &> /dev/null; then
+            echo "Aliyun CLI is already installed: $(aliyun --version)"
+            echo "aliyun_cli_installed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Aliyun CLI not found, will install using action"
+            echo "aliyun_cli_installed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # 检查 Docker 是否已安装（预装镜像应该已包含）
+          if command -v docker &> /dev/null; then
+            echo "Docker is already installed: $(docker --version)"
+            # 确保 Docker daemon 正在运行
+            if ! docker info &> /dev/null; then
+              echo "Warning: Docker daemon is not running, starting..."
+              sudo systemctl start docker || true
+            fi
+            echo "docker_installed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Docker not found, will use setup-docker-action"
+            echo "docker_installed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # 检查 Docker Buildx 是否已安装
+          if docker buildx version &> /dev/null; then
+            echo "Docker Buildx is already installed: $(docker buildx version)"
+            echo "buildx_installed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Docker Buildx not found, will use setup-buildx-action"
+            echo "buildx_installed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Aliyun CLI (if missing)
+        if: steps.verify-tools.outputs.aliyun_cli_installed != 'true'
         uses: aliyun/setup-aliyun-cli-action@v1
         # 注意：自毁脚本使用实例角色认证，不需要配置 Access Key
         # 此 action 仅用于安装 aliyun cli，不进行配置，使用默认版本
 
-      - name: Set up Docker
+      - name: Set up Docker (if missing)
+        if: steps.verify-tools.outputs.docker_installed != 'true'
         uses: docker/setup-docker-action@v4
 
-      - name: Set up Docker Buildx
-        if: vars.DOCKER_HUB_MIRROR != ''
+      - name: Set up Docker Buildx (if missing or with mirror)
+        if: steps.verify-tools.outputs.buildx_installed != 'true' || vars.DOCKER_HUB_MIRROR != ''
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: |
@@ -330,12 +390,16 @@ jobs:
             [registry."docker.io"]
               mirrors = ["${{ vars.DOCKER_HUB_MIRROR }}"]
       
-      - name: Set up Docker Buildx (without mirror)
-        if: vars.DOCKER_HUB_MIRROR == ''
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            network=host
+      - name: Configure Docker Buildx Registry Mirror
+        if: steps.verify-tools.outputs.buildx_installed == 'true' && vars.DOCKER_HUB_MIRROR != ''
+        run: |
+          # 如果 Buildx 已存在，配置 registry mirror
+          mkdir -p ~/.docker/buildx
+          cat > ~/.docker/buildx/config.toml <<EOF
+          [registry."docker.io"]
+            mirrors = ["${{ vars.DOCKER_HUB_MIRROR }}"]
+          EOF
+          echo "Docker Buildx registry mirror configured"
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
