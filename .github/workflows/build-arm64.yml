@@ -1,0 +1,378 @@
+name: Build ARM64
+
+on:
+  # 暂时注释掉 push 触发，避免在测试后续迭代时触发无效构建
+  # push:
+  #   branches:
+  #     - develop
+  #     - master
+  #   tags:
+  #     - 'v*'
+  workflow_dispatch:
+    inputs:
+      min_cpu:
+        description: '起始 CPU 核心数（可选，默认使用 vars.MIN_CPU 或 8）'
+        required: false
+        type: number
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: dianplus/openresty
+  ARCH: arm64
+  DOCKER_HUB_MIRROR: ${{ vars.DOCKER_HUB_MIRROR }}
+
+jobs:
+  setup:
+    name: Setup Spot Instance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      instance_id: ${{ steps.create-instance.outputs.instance_id }}
+      runner_name: ${{ steps.create-instance.outputs.runner_name }}
+      runner_online: ${{ steps.wait-runner.outputs.runner_online }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Configure Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: '3.1.2'
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID }}
+
+      - name: Get Runner Registration Token
+        id: get-token
+        uses: actions/github-script@v7
+        with:
+          # 使用专用的 PAT token 获取 Runner Registration Token
+          # GITHUB_TOKEN 无法获得 administration 权限，必须使用 PAT token
+          github-token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          script: |
+            const response = await github.rest.actions.createRegistrationTokenForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            return response.data.token;
+          result-encoding: string
+
+      - name: Generate Runner Name
+        id: runner-name
+        run: |
+          TIMESTAMP=$(date +%s)
+          RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}"
+          echo "name=${RUNNER_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Download spot-instance-advisor
+        id: download-advisor
+        run: |
+          # 下载 spot-instance-advisor 工具
+          # 从 GitHub releases 下载预构建二进制
+          # 获取最新 release 版本
+          # 回退版本 v1.0.1：从该版本开始支持 --arch 参数
+          echo "Fetching latest release version..." >&2
+          ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+          if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
+            echo "Warning: Failed to fetch latest version, using fallback: v1.0.1 (first version with --arch support)" >&2
+            ADVISOR_VERSION="v1.0.1"
+          fi
+          echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
+          echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
+          
+          # 下载二进制文件
+          ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${ADVISOR_VERSION}/spot-instance-advisor-linux-amd64"
+          echo "Downloading from: ${ADVISOR_URL}" >&2
+          curl -L -f -o spot-instance-advisor "${ADVISOR_URL}" || {
+            echo "Error: Failed to download spot-instance-advisor from releases" >&2
+            exit 1
+          }
+          chmod +x spot-instance-advisor
+          echo "advisor_path=$(pwd)/spot-instance-advisor" >> $GITHUB_OUTPUT
+          ./spot-instance-advisor --version || echo "Warning: Version check failed" >&2
+
+      - name: Select Optimal Instance
+        id: select-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ARCH: ${{ env.ARCH }}
+          SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
+          # 资源需求规格（优先级：workflow_dispatch inputs > vars > 默认值）
+          # ARM64: CPU:RAM = 1:2，默认 8c16g 到 64c128g
+          # MIN_MEM 会根据 MIN_CPU 自动计算（1:2 比例）
+          # MAX_CPU 和 MAX_MEM 使用脚本默认值（64 和 128）
+          # 注意：inputs.min_cpu 如果是 number 类型且未设置，值为空字符串 ''
+          MIN_CPU: ${{ inputs.min_cpu != '' && inputs.min_cpu || (vars.MIN_CPU != '' && vars.MIN_CPU || '') }}
+          # MIN_MEM 由脚本根据 MIN_CPU 和架构自动计算，不需要配置
+          # VSwitch ID 变量映射（根据可用区动态选择）
+          # 注意：不同 region 的可用区后缀可能不同，需要根据实际使用的 region 配置相应的变量
+          # 例如：cn-hangzhou 可能有 B/G/H/I/J/K，cn-beijing 可能有 A/B/C
+          # 预定义所有可能的可用区后缀（A-Z），未配置的变量为空值，脚本会自动跳过
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+        run: |
+          # 调用 select-instance.py 脚本
+          OUTPUT=$(python3 .github/scripts/select-instance.py)
+          
+          # 解析输出并设置 GitHub Actions 输出
+          CPU_CORES_DEFAULT=8  # 默认值，防止 CPU_CORES 为空
+          while IFS='=' read -r key value; do
+            if [[ -n "${key}" && -n "${value}" ]]; then
+              echo "${key}=${value}" >> $GITHUB_OUTPUT
+              # 如果是 CANDIDATES_FILE，需要导出到环境变量供后续步骤使用
+              if [[ "${key}" == "CANDIDATES_FILE" ]]; then
+                echo "${key}=${value}" >> $GITHUB_ENV
+              fi
+              # 如果是 CPU_CORES，更新默认值
+              if [[ "${key}" == "CPU_CORES" ]]; then
+                CPU_CORES_DEFAULT="${value}"
+              fi
+            fi
+          done <<< "${OUTPUT}"
+          
+          # 确保 CPU_CORES 有值（如果脚本没有输出，使用默认值）
+          if ! grep -q "^CPU_CORES=" $GITHUB_OUTPUT 2>/dev/null; then
+            echo "CPU_CORES=${CPU_CORES_DEFAULT}" >> $GITHUB_OUTPUT
+            echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
+          fi
+
+      - name: Generate User Data
+        id: user-data
+        env:
+          RUNNER_REGISTRATION_TOKEN: ${{ steps.get-token.outputs.result }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+          RUNNER_LABELS: self-hosted,Linux,arm64
+          HTTP_PROXY: ${{ vars.HTTP_PROXY }}
+          HTTPS_PROXY: ${{ vars.HTTPS_PROXY }}
+          NO_PROXY: ${{ vars.NO_PROXY }}
+          # 实例自毁配置：使用实例角色获取权限
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
+        run: |
+          USER_DATA=$(bash .github/scripts/generate-user-data.sh)
+          # 使用 base64 编码，避免环境变量传递时的转义问题
+          USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+          echo "user_data_b64=${USER_DATA_B64}" >> $GITHUB_OUTPUT
+
+      - name: Create Spot Instance
+        id: create-instance
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          ALIYUN_VPC_ID: ${{ vars.ALIYUN_VPC_ID }}
+          ALIYUN_SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          # 优先使用镜像族系（推荐），如果未设置则使用 ALIYUN_IMAGE_ID 作为后备
+          ALIYUN_IMAGE_FAMILY: ${{ vars.ALIYUN_ARM64_IMAGE_FAMILY }}
+          ALIYUN_IMAGE_ID: ${{ vars.ALIYUN_ARM64_IMAGE_ID }}
+          ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
+          ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
+          ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
+          INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
+          INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
+          ARCH: ${{ env.ARCH }}
+          SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
+          CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
+          # VSwitch ID 变量映射（用于重试机制，根据可用区动态选择）
+          ALIYUN_VSWITCH_ID_A: ${{ vars.ALIYUN_VSWITCH_ID_A }}
+          ALIYUN_VSWITCH_ID_B: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          ALIYUN_VSWITCH_ID_C: ${{ vars.ALIYUN_VSWITCH_ID_C }}
+          ALIYUN_VSWITCH_ID_D: ${{ vars.ALIYUN_VSWITCH_ID_D }}
+          ALIYUN_VSWITCH_ID_E: ${{ vars.ALIYUN_VSWITCH_ID_E }}
+          ALIYUN_VSWITCH_ID_F: ${{ vars.ALIYUN_VSWITCH_ID_F }}
+          ALIYUN_VSWITCH_ID_G: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          ALIYUN_VSWITCH_ID_H: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          ALIYUN_VSWITCH_ID_I: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          ALIYUN_VSWITCH_ID_J: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          ALIYUN_VSWITCH_ID_K: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          ALIYUN_VSWITCH_ID_L: ${{ vars.ALIYUN_VSWITCH_ID_L }}
+          ALIYUN_VSWITCH_ID_M: ${{ vars.ALIYUN_VSWITCH_ID_M }}
+          ALIYUN_VSWITCH_ID_N: ${{ vars.ALIYUN_VSWITCH_ID_N }}
+          ALIYUN_VSWITCH_ID_O: ${{ vars.ALIYUN_VSWITCH_ID_O }}
+          ALIYUN_VSWITCH_ID_P: ${{ vars.ALIYUN_VSWITCH_ID_P }}
+          ALIYUN_VSWITCH_ID_Q: ${{ vars.ALIYUN_VSWITCH_ID_Q }}
+          ALIYUN_VSWITCH_ID_R: ${{ vars.ALIYUN_VSWITCH_ID_R }}
+          ALIYUN_VSWITCH_ID_S: ${{ vars.ALIYUN_VSWITCH_ID_S }}
+          ALIYUN_VSWITCH_ID_T: ${{ vars.ALIYUN_VSWITCH_ID_T }}
+          ALIYUN_VSWITCH_ID_U: ${{ vars.ALIYUN_VSWITCH_ID_U }}
+          ALIYUN_VSWITCH_ID_V: ${{ vars.ALIYUN_VSWITCH_ID_V }}
+          ALIYUN_VSWITCH_ID_W: ${{ vars.ALIYUN_VSWITCH_ID_W }}
+          ALIYUN_VSWITCH_ID_X: ${{ vars.ALIYUN_VSWITCH_ID_X }}
+          ALIYUN_VSWITCH_ID_Y: ${{ vars.ALIYUN_VSWITCH_ID_Y }}
+          ALIYUN_VSWITCH_ID_Z: ${{ vars.ALIYUN_VSWITCH_ID_Z }}
+          USER_DATA_B64: ${{ steps.user-data.outputs.user_data_b64 }}
+        run: |
+          # 将 User Data 写入临时文件，使用 Python 脚本避免在日志中暴露敏感信息
+          # 通过 base64 编码的环境变量传递，避免转义和解析问题
+          python3 .github/scripts/write-user-data.py /tmp/user-data.sh
+          export USER_DATA_FILE=/tmp/user-data.sh
+          export DEBUG=true  # 启用调试模式，输出详细的 VSwitch ID 映射信息
+          # 注意：不启用 set -x，避免输出 User Data 内容（包含敏感信息）
+          # 如果需要调试，可以临时启用，但要注意不要将敏感信息输出到日志
+          # 执行脚本并捕获输出，将标准输出和标准错误分离
+          # 脚本应该只输出实例 ID 到标准输出，其他信息输出到标准错误
+          # 使用临时文件捕获所有输出，同时显示标准错误以便调试
+          python3 .github/scripts/create-spot-instance.py > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
+            EXIT_CODE=$?
+            echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
+            exit ${EXIT_CODE}
+          }
+          EXIT_CODE=$?
+          if [[ ${EXIT_CODE} -ne 0 ]]; then
+            echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
+            exit ${EXIT_CODE}
+          fi
+          INSTANCE_ID=$(cat /tmp/instance-id.txt | tail -1)
+          if [[ -z "${INSTANCE_ID}" ]]; then
+            echo "Error: Failed to extract instance ID"
+            echo "=== Standard Output ==="
+            cat /tmp/instance-id.txt
+            echo "=== Error Output ==="
+            cat /tmp/aliyun-error.log
+            exit 1
+          fi
+          echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
+          echo "runner_name=${{ steps.runner-name.outputs.name }}" >> $GITHUB_OUTPUT
+
+      - name: Wait for Runner Online
+        id: wait-runner
+        env:
+          # 使用具备仓库管理权限的 PAT，避免 403 Resource not accessible by integration
+          GITHUB_TOKEN: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+          TIMEOUT: 300
+          INTERVAL: 10
+        run: |
+          bash .github/scripts/wait-for-runner.sh
+
+      - name: Cleanup on Failure
+        if: failure()
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID }}
+          INSTANCE_ID: ${{ steps.create-instance.outputs.instance_id }}
+        run: |
+          if [[ -n "${INSTANCE_ID}" ]]; then
+            bash .github/scripts/cleanup-instance.sh
+          fi
+
+  build:
+    name: Build and Push
+    needs: setup
+    runs-on: [self-hosted, Linux, arm64]
+    if: needs.setup.outputs.runner_online == 'true'
+    env:
+      HTTP_PROXY: ${{ vars.HTTP_PROXY }}
+      HTTPS_PROXY: ${{ vars.HTTPS_PROXY }}
+      NO_PROXY: ${{ vars.NO_PROXY }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Aliyun CLI
+        uses: aliyun/setup-aliyun-cli-action@v1
+        # 注意：自毁脚本使用实例角色认证，不需要配置 Access Key
+        # 此 action 仅用于安装 aliyun cli，不进行配置，使用默认版本
+
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
+
+      - name: Set up Docker Buildx
+        if: vars.DOCKER_HUB_MIRROR != ''
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["${{ vars.DOCKER_HUB_MIRROR }}"]
+      
+      - name: Set up Docker Buildx (without mirror)
+        if: vars.DOCKER_HUB_MIRROR == ''
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest-arm64,enable={{is_default_branch}}
+            type=semver,pattern={{version}}-arm64
+            type=ref,event=branch,suffix=-arm64
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        env:
+          http_proxy: ${{ env.HTTP_PROXY }}
+          https_proxy: ${{ env.HTTPS_PROXY }}
+          no_proxy: ${{ env.NO_PROXY }}
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            RESTY_J=${{ needs.setup.outputs.CPU_CORES || '8' }}
+            HTTP_PROXY=${{ env.HTTP_PROXY }}
+            HTTPS_PROXY=${{ env.HTTPS_PROXY }}
+            NO_PROXY=${{ env.NO_PROXY }}
+            http_proxy=${{ env.HTTP_PROXY }}
+            https_proxy=${{ env.HTTPS_PROXY }}
+            no_proxy=${{ env.NO_PROXY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
