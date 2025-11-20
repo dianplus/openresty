@@ -84,6 +84,44 @@ curl -L -f -o /usr/local/bin/spot-instance-advisor "${{ADVISOR_URL}}"
 chmod +x /usr/local/bin/spot-instance-advisor
 spot-instance-advisor --version || echo "Warning: Version check failed"
 
+# 安装 Docker Engine
+echo "=== Installing Docker Engine ==="
+# 安装必要的依赖
+apt-get install -y ca-certificates gnupg lsb-release
+
+# 添加 Docker 官方 GPG 密钥
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# 设置 Docker 仓库
+echo \\
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \\
+  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 更新 apt 包索引
+apt-get update -y
+
+# 安装 Docker Engine、CLI 和 Containerd
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 启动 Docker daemon 并设置为开机自启
+systemctl start docker
+systemctl enable docker
+
+# 验证 Docker 安装
+docker --version
+docker info
+
+# 配置 Docker Buildx（Docker 20.10+ 自带，但需要创建 builder 实例）
+echo "=== Configuring Docker Buildx ==="
+docker buildx version || echo "Warning: Buildx version check failed"
+# 创建默认 builder 实例（如果不存在）
+docker buildx create --name builder --use 2>/dev/null || docker buildx use builder 2>/dev/null || true
+docker buildx inspect --bootstrap || echo "Warning: Buildx builder setup failed"
+
+# 验证 Buildx
+docker buildx ls
+
 # 安装 GitHub Actions Runner（预装但未配置）
 echo "=== Installing GitHub Actions Runner ==="
 RUNNER_DIR="/opt/actions-runner"
@@ -100,6 +138,9 @@ echo "Runner installed to ${{RUNNER_DIR}}"
 # 生成版本信息文件
 echo "=== Generating version info ==="
 VERSION_FILE="/opt/image-version.json"
+# 获取 Docker 和 Buildx 版本
+DOCKER_VERSION=$(docker --version | sed 's/.*version //' | sed 's/,.*//' || echo "unknown")
+BUILDX_VERSION=$(docker buildx version | sed 's/.*v//' || echo "unknown")
 cat > "${{VERSION_FILE}}" << 'VERSION_EOF'
 {{
   "base_image": "BASE_IMAGE_ID_PLACEHOLDER",
@@ -108,6 +149,8 @@ cat > "${{VERSION_FILE}}" << 'VERSION_EOF'
   "aliyun_cli_version": "${{ALIYUN_CLI_VERSION}}",
   "advisor_version": "${{ADVISOR_VERSION}}",
   "runner_version": "${{RUNNER_VERSION}}",
+  "docker_version": "${{DOCKER_VERSION}}",
+  "buildx_version": "${{BUILDX_VERSION}}",
   "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "architecture": "{arch}"
 }}
