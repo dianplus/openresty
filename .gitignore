@@ -1,2 +1,11 @@
 /.project
 !/.idea/
+.env
+.env-local
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+ITERATION_PLAN.md
+spot-instance-advisor
