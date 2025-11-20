@@ -1279,6 +1279,7 @@ def cleanup_old_images(
     image_name: str,
     keep_count: int = 5,
     exclude_image_id: Optional[str] = None,
+    rename_only: bool = False,
 ) -> None:
     """
     清理旧版本镜像：重命名旧镜像并保留指定数量，删除多余的
@@ -1288,6 +1289,7 @@ def cleanup_old_images(
         image_name: 镜像名称（应该以 -latest 结尾）
         keep_count: 保留的镜像数量
         exclude_image_id: 要排除的镜像ID（通常是新创建的镜像，不应被重命名）
+        rename_only: 如果为 True，只重命名镜像，不删除（用于创建新镜像前的清理）
     """
     from datetime import datetime
     
@@ -1344,6 +1346,11 @@ def cleanup_old_images(
             except (ValueError, AttributeError) as e:
                 print(f"Warning: Failed to parse creation time {creation_time}: {e}, will delete image", file=sys.stderr)
                 delete_image(region_id, image_id)
+    
+    # 如果只需要重命名，不删除，直接返回
+    if rename_only:
+        print("Rename-only mode: skipping deletion step", file=sys.stderr)
+        return
     
     # 提取镜像名称前缀（去掉 -latest 后缀）
     if image_name.endswith("-latest"):
@@ -1685,10 +1692,10 @@ def main():
         # 命名规则：{prefix}-{arch}-latest（类似 Docker 的 ubuntu:latest）
         image_name_latest = f"{image_name_prefix}-{arch}-latest"
         
-        # 在创建新镜像前，先处理旧镜像（重命名和清理）
+        # 在创建新镜像前，先处理旧镜像（只重命名，不删除）
         keep_count = int(os.environ.get("KEEP_IMAGE_COUNT", "5"))
-        print(f"Processing existing images with name {image_name_latest} (keeping {keep_count} latest)", file=sys.stderr)
-        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=None)
+        print(f"Processing existing images with name {image_name_latest} (renaming old images to make room for new one)", file=sys.stderr)
+        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=None, rename_only=True)
         
         description = f"Custom Ubuntu 24 image for {arch} with pre-installed tools (base: {image_id})"
         tags = {
