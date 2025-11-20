@@ -1448,15 +1448,15 @@ def main():
             "Please ensure aliyun-cli-setup-action is used in the workflow"
         )
 
+    # 生成版本哈希（用于镜像标签，无论是否强制构建都需要）
+    version_hash = f"{image_id}_{image_creation_time}"
+    
     # 检查是否强制构建（跳过版本检查）
     force_build = os.environ.get("FORCE_BUILD", "false").lower() == "true"
     
     if force_build:
         print("Force build enabled, skipping version check", file=sys.stderr)
     else:
-        # 生成版本哈希
-        version_hash = f"{image_id}_{image_creation_time}"
-        
         # 检查是否已存在相同版本的镜像
         existing_image_id = check_existing_image(region_id, image_name_prefix, version_hash)
         if existing_image_id:
