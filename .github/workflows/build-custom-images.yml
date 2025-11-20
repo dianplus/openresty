@@ -19,7 +19,7 @@ env:
   ALIYUN_VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B || vars.ALIYUN_VSWITCH_ID_G || vars.ALIYUN_VSWITCH_ID_H }}
   IMAGE_NAME_PREFIX: ${{ vars.IMAGE_NAME_PREFIX || 'github-runner-ubuntu24' }}
   PUBLISH_TO_MARKETPLACE: ${{ vars.PUBLISH_TO_MARKETPLACE || 'false' }}
-  KEEP_IMAGE_COUNT: ${{ vars.KEEP_IMAGE_COUNT || '1' }}
+  KEEP_IMAGE_COUNT: ${{ vars.KEEP_IMAGE_COUNT || '5' }}
   # 构建镜像的资源需求（较低，只需要安装工具）
   IMAGE_BUILD_MIN_CPU: ${{ vars.IMAGE_BUILD_MIN_CPU || '2' }}
   IMAGE_BUILD_MAX_CPU: ${{ vars.IMAGE_BUILD_MAX_CPU || '8' }}
