@@ -1441,16 +1441,22 @@ def main():
             "Please ensure aliyun-cli-setup-action is used in the workflow"
         )
 
-    # 生成版本哈希
-    version_hash = f"{image_id}_{image_creation_time}"
+    # 检查是否强制构建（跳过版本检查）
+    force_build = os.environ.get("FORCE_BUILD", "false").lower() == "true"
     
-    # 检查是否已存在相同版本的镜像
-    existing_image_id = check_existing_image(region_id, image_name_prefix, version_hash)
-    if existing_image_id:
-        print(f"IMAGE_ID={existing_image_id}", file=sys.stdout)
-        print(f"SKIP_BUILD=true", file=sys.stdout)
-        print("Image with matching version already exists, skipping build", file=sys.stderr)
-        return
+    if force_build:
+        print("Force build enabled, skipping version check", file=sys.stderr)
+    else:
+        # 生成版本哈希
+        version_hash = f"{image_id}_{image_creation_time}"
+        
+        # 检查是否已存在相同版本的镜像
+        existing_image_id = check_existing_image(region_id, image_name_prefix, version_hash)
+        if existing_image_id:
+            print(f"IMAGE_ID={existing_image_id}", file=sys.stdout)
+            print(f"SKIP_BUILD=true", file=sys.stdout)
+            print("Image with matching version already exists, skipping build", file=sys.stderr)
+            return
 
     # 创建 User Data 脚本
     user_data_script = create_user_data_script(arch)

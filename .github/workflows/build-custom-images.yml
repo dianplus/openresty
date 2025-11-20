@@ -187,13 +187,6 @@ jobs:
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
           ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
-          # 如果强制构建，跳过版本检查
-          if [[ "${FORCE_BUILD}" == "true" ]]; then
-            echo "Force build enabled, skipping version check"
-            # 删除版本检查逻辑（通过设置不存在的镜像 ID）
-            export BASE_IMAGE_ID="${BASE_IMAGE_ID}-force"
-          fi
-          
           OUTPUT=$(python3 .github/scripts/build-custom-image.py)
           
           # 解析输出
@@ -385,13 +378,6 @@ jobs:
           ALIYUN_KEY_PAIR_NAME: ${{ vars.ALIYUN_KEY_PAIR_NAME }}
           ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME }}
         run: |
-          # 如果强制构建，跳过版本检查
-          if [[ "${FORCE_BUILD}" == "true" ]]; then
-            echo "Force build enabled, skipping version check"
-            # 删除版本检查逻辑（通过设置不存在的镜像 ID）
-            export BASE_IMAGE_ID="${BASE_IMAGE_ID}-force"
-          fi
-          
           OUTPUT=$(python3 .github/scripts/build-custom-image.py)
           
           # 解析输出
