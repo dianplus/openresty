@@ -723,12 +723,12 @@ def create_instance(
         print(f"Using provided image size: {image_size_gb}GB", file=sys.stderr)
     
     if image_size_gb:
-        # 系统盘大小 = 镜像大小 + 10GB（用于安装工具和临时文件），最小 40GB
-        system_disk_size = max(image_size_gb + 10, 40)
+        # 系统盘大小 = 镜像大小 + 10GB（用于安装工具和临时文件）
+        system_disk_size = image_size_gb + 10
         print(f"Image size: {image_size_gb}GB, setting system disk size to {system_disk_size}GB", file=sys.stderr)
     else:
-        # 如果查询失败，使用默认值 40GB（足够大多数镜像使用）
-        system_disk_size = 40
+        # 如果查询失败，使用默认值（假设基础镜像约 20GB，加上 10GB 用于工具）
+        system_disk_size = 30
         print(f"Failed to query image size, using default system disk size: {system_disk_size}GB", file=sys.stderr)
 
     cmd = [
