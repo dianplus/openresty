@@ -1,95 +1,273 @@
 # OpenResty for DianPlus
 
-## 上游 OpenResty Dockerfile
+A multi-architecture container image build system using GitHub Actions and Alibaba Cloud Spot instances for cost-effective, high-performance automated builds.
 
-- 上游参考: `https://github.com/openresty/docker-openresty/blob/master/alpine/Dockerfile`
+## Overview
 
-## 自动化构建
+This project provides an automated build pipeline for multi-architecture (AMD64/ARM64) container images using:
 
-本项目使用 GitHub Actions 进行自动化构建，支持 AMD64 和 ARM64 架构
+- **GitHub Actions** for CI/CD orchestration
+- **Alibaba Cloud Spot Instances** for ultra-low-cost native architecture builds
+- **Self-hosted Runners** for build execution
+- **Custom image management** for optimized runner base images
 
-### 构建工作流
+The root `Dockerfile` is a customized OpenResty image based on the upstream [OpenResty Dockerfile](https://github.com/openresty/docker-openresty/blob/master/alpine/Dockerfile).
 
-项目提供三个主要工作流：
+## Key Features
 
-1. **Build AMD64** (`build-amd64.yml`): 在 AMD64 Spot 实例上构建 AMD64 架构镜像
-2. **Build ARM64** (`build-arm64.yml`): 在 ARM64 Spot 实例上构建 ARM64 架构镜像
-3. **Merge Multi-Arch Manifests** (`merge-manifests.yml`): 合并 AMD64 和 ARM64 镜像为多架构 manifest
+### Multi-Architecture Support
 
-### 构建流程
+- Native AMD64 and ARM64 builds (no QEMU emulation overhead)
+- Automatic architecture-specific image tagging
+- Multi-arch manifest merging for unified tags
 
-#### 阶段 1: 架构特定镜像构建
+### Cost Optimization
 
-1. **触发构建**:
-   - 推送到 `develop`/`master` 分支时自动触发（当前已禁用，仅支持手动触发）
-   - 创建 `v*` 版本标签时自动触发（当前已禁用，仅支持手动触发）
-   - 通过 GitHub Actions 页面手动运行工作流
+- **Ultra-low cost**: ~¥0.05-0.1 per build using Spot instances
+- **Automatic cleanup**: Instances self-destruct after build completion
+- **Dynamic instance selection**: Automatically selects optimal instance types based on pricing
 
-2. **执行构建**:
-   - AMD64 和 ARM64 构建工作流独立运行
-   - 每个工作流在对应的原生架构 Spot 实例上构建
-   - 构建完成后推送架构特定标签（如 `latest-amd64`、`latest-arm64`）
+### Custom Image Management
 
-#### 阶段 2: 多架构镜像合并
+- Automated custom image building for runner base images
+- Image family support (`ALIYUN_IMAGE_FAMILY`) for automatic latest image retrieval
+- Intelligent image cleanup: keeps `-latest` suffix for new images, renames old images with date suffix
+- Configurable image retention (default: 5 images per prefix)
 
-1. **触发合并**:
-   - 在 AMD64 和 ARM64 构建都完成后，手动触发 `Merge Multi-Arch Manifests` 工作流
-   - 输入要合并的标签（不含架构后缀，如 `latest` 或 `v1.0.0`）
+### Advanced Instance Management
 
-2. **执行合并**:
-   - 检查对应的架构特定镜像是否存在（`<tag>-amd64` 和 `<tag>-arm64`）
-   - 创建并推送多架构 manifest（`<tag>`）
-   - Docker 会根据运行平台自动选择对应的架构镜像
+- Dynamic VSwitch selection based on availability zone
+- Disk category fallback strategy (cloud_essd → cloud_ssd → cloud_efficiency)
+- Instance tagging for resource tracking
+- Self-destruct mechanism with fallback cleanup
 
-### 镜像访问
+## Workflows
 
-构建完成后，镜像推送到 GitHub Container Registry：
+### 1. Build AMD64 (`build-amd64.yml`)
 
-- **多架构合并镜像**（推荐）: `ghcr.io/dianplus/openresty:<tag>` - Docker 自动匹配平台
-- **架构特定镜像**（调试用）: `ghcr.io/dianplus/openresty:<tag>-amd64` 或 `ghcr.io/dianplus/openresty:<tag>-arm64`
+Builds AMD64 architecture images on native AMD64 Spot instances.
 
-### 标签策略
+**Features:**
 
-项目采用两阶段标签策略：
+- Dynamic spot instance selection
+- Self-hosted runner auto-configuration
+- Automatic instance cleanup
+- Architecture-specific tagging (`<tag>-amd64`)
 
-- **构建阶段**: 创建架构特定标签（如 `latest-amd64`、`latest-arm64`）
-- **合并阶段**: 创建统一标签（如 `latest`）
+### 2. Build ARM64 (`build-arm64.yml`)
 
-用户可直接拉取统一标签，Docker 会自动匹配平台。
+Builds ARM64 architecture images on native ARM64 Spot instances.
 
-详细说明请参考 [需求文档 - 标签策略](requirements/02-workflows.md#标签策略说明)。
+**Features:**
 
-### 使用示例
+- Same as AMD64 workflow but for ARM64 architecture
+- Architecture-specific tagging (`<tag>-arm64`)
 
-#### 构建架构特定镜像
+### 3. Build Custom Images (`build-custom-images.yml`)
 
-1. 手动触发 `Build AMD64` 工作流
-2. 手动触发 `Build ARM64` 工作流
-3. 等待两个构建都完成
+Builds and manages custom Ubuntu 24 base images for self-hosted runners.
 
-#### 合并多架构镜像
+**Features:**
 
-1. 在 GitHub Actions 页面找到 `Merge Multi-Arch Manifests` 工作流
-2. 点击 "Run workflow"
-3. 输入要合并的标签（如 `latest` 或 `v1.0.0`）
-4. 点击 "Run workflow" 执行合并
+- Automated custom image creation from spot instances
+- Image family support for automatic base image selection
+- Dynamic system disk sizing based on image size
+- Image cleanup with date-suffix renaming
+- Support for both AMD64 and ARM64 architectures
 
-#### 拉取镜像
+**Trigger:**
+
+- Scheduled: Daily at 02:00 UTC (10:00 Beijing time)
+- Manual: Workflow dispatch with optional force build
+
+### 4. Merge Multi-Arch Manifests (`merge-manifests.yml`)
+
+Merges AMD64 and ARM64 images into unified multi-architecture manifests.
+
+**Features:**
+
+- Creates unified tags (e.g., `latest`, `v1.0.0`)
+- Docker automatically selects correct architecture at runtime
+- On-demand merging (manual trigger)
+
+## Build Process
+
+### Phase 1: Architecture-Specific Image Build
+
+1. **Trigger Build**
+   - Manual workflow dispatch (auto-triggers currently disabled)
+   - Version tag creation (currently disabled)
+
+2. **Instance Creation**
+   - Dynamic spot instance selection using `spot-instance-advisor`
+   - Optimal instance type selection based on pricing
+   - Automatic VSwitch selection by availability zone
+   - Self-hosted runner configuration (Ephemeral mode)
+
+3. **Build Execution**
+   - Native architecture build (no emulation)
+   - Push to GitHub Container Registry
+   - Architecture-specific tagging: `<tag>-amd64` or `<tag>-arm64`
+
+4. **Cleanup**
+   - Instance self-destruct script (primary mechanism)
+   - Workflow cleanup job (fallback verification)
+   - Zero cost accumulation
+
+### Phase 2: Multi-Architecture Manifest Merge
+
+1. **Trigger Merge**
+   - Manual workflow dispatch after both AMD64 and ARM64 builds complete
+   - Input target tag (without architecture suffix, e.g., `latest` or `v1.0.0`)
+
+2. **Merge Execution**
+   - Verify architecture-specific images exist (`<tag>-amd64` and `<tag>-arm64`)
+   - Create and push multi-arch manifest (`<tag>`)
+   - Docker automatically selects correct architecture at runtime
+
+## Custom Image Building
+
+The custom image building workflow creates optimized Ubuntu 24 base images for self-hosted runners with pre-installed tools.
+
+### Image Management Features
+
+- **Image Family Support**: Uses `ALIYUN_IMAGE_FAMILY` environment variable to automatically retrieve the latest base image
+- **Dynamic Size Calculation**: Automatically queries image size (in GB) and sets system disk size accordingly
+- **Intelligent Cleanup**:
+  - New images always keep `-latest` suffix
+  - Old images renamed with date suffix (e.g., `github-runner-ubuntu24-amd64-202511201200`)
+  - Total images (latest + dated) counted and kept within `KEEP_IMAGE_COUNT` limit
+- **Version Tracking**: Uses version hash to detect existing images and skip rebuilds
+
+### Image Naming Convention
+
+- **Latest image**: `<prefix>-<arch>-latest` (e.g., `github-runner-ubuntu24-amd64-latest`)
+- **Historical images**: `<prefix>-<arch>-YYYYMMDDHHMM` (e.g., `github-runner-ubuntu24-amd64-202511201200`)
+
+### Configuration
+
+Key environment variables:
+
+- `ALIYUN_IMAGE_FAMILY`: Image family name for automatic base image selection
+- `IMAGE_NAME_PREFIX`: Prefix for custom image names (default: `github-runner-ubuntu24`)
+- `KEEP_IMAGE_COUNT`: Number of images to retain (default: 5)
+
+## Image Access
+
+Images are pushed to GitHub Container Registry:
+
+- **Multi-arch merged images** (recommended): `ghcr.io/dianplus/openresty:<tag>` - Docker automatically matches platform
+- **Architecture-specific images** (for debugging): `ghcr.io/dianplus/openresty:<tag>-amd64` or `ghcr.io/dianplus/openresty:<tag>-arm64`
+
+## Usage Examples
+
+### Building Architecture-Specific Images
+
+1. Manually trigger `Build AMD64` workflow
+2. Manually trigger `Build ARM64` workflow
+3. Wait for both builds to complete
+
+### Merging Multi-Architecture Images
+
+1. Navigate to GitHub Actions page
+2. Find `Merge Multi-Arch Manifests` workflow
+3. Click "Run workflow"
+4. Enter target tag (e.g., `latest` or `v1.0.0`)
+5. Click "Run workflow" to execute merge
+
+### Pulling Images
 
 ```bash
-# 拉取多架构镜像（推荐，Docker 自动匹配平台）
+# Pull multi-arch image (recommended, Docker auto-matches platform)
 docker pull ghcr.io/dianplus/openresty:latest
 
-# 拉取特定架构镜像（调试用）
+# Pull architecture-specific image (for debugging)
 docker pull ghcr.io/dianplus/openresty:latest-amd64
 docker pull ghcr.io/dianplus/openresty:latest-arm64
 ```
 
-### 优势
+### Querying Custom Images
 
-- **原生构建**: AMD64 和 ARM64 都在原生架构实例上构建，无 QEMU 模拟开销
-- **超低成本**: 单次构建成本约 ¥0.05-0.1
-- **自动清理**: 构建完成后自动销毁 Spot 实例
-- **灵活合并**: 支持按需合并多架构镜像，避免不必要的合并操作
+```bash
+# Get image ID by name
+export ALIYUN_REGION_ID=cn-hangzhou
+export IMAGE_NAME=github-runner-ubuntu24-amd64-latest
+python3 .github/scripts/get-image-id-by-name.py
+```
 
-详细配置请参考 [需求文档](requirements/README.md)。
+## Key Scripts
+
+### Core Build Scripts
+
+- `build-custom-image.py`: Custom image building with comprehensive image management
+- `select-instance.py`: Optimal spot instance type selection
+- `create-spot-instance.py`: Spot instance creation with retry mechanism
+
+### Runner Management
+
+- `generate-user-data.sh`: User data generation for runner configuration
+- `get-registration-token.sh`: Runner registration token retrieval
+- `wait-for-runner.sh`: Runner online status monitoring
+
+### Instance Management
+
+- `self-destruct.sh`: Automatic instance termination
+- `cleanup-instance.sh`: Fallback cleanup mechanism
+- `debug-self-destruct.sh`: Troubleshooting tool
+
+### Image Utilities
+
+- `query-ubuntu-image.py`: Ubuntu image querying
+- `get-image-id-by-name.py`: Image ID lookup by name
+- `publish-image-to-marketplace.py`: Marketplace publishing
+
+## Configuration
+
+### Required GitHub Variables
+
+- `ALIYUN_REGION_ID`: Alibaba Cloud region ID
+- `ALIYUN_VPC_ID`: VPC ID
+- `ALIYUN_SECURITY_GROUP_ID`: Security group ID
+- `ALIYUN_VSWITCH_ID_*`: VSwitch IDs for each availability zone (A-Z)
+- `ALIYUN_AMD64_IMAGE_FAMILY`: Image family for AMD64 base images
+- `ALIYUN_ARM64_IMAGE_FAMILY`: Image family for ARM64 base images
+- `ALIYUN_KEY_PAIR_NAME`: SSH key pair name
+- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: RAM role for instance self-destruct
+
+### Optional GitHub Variables
+
+- `IMAGE_NAME_PREFIX`: Custom image name prefix (default: `github-runner-ubuntu24`)
+- `KEEP_IMAGE_COUNT`: Number of images to retain (default: 5)
+- `IMAGE_BUILD_MIN_CPU`: Minimum CPU cores for image build instances (default: 2)
+- `IMAGE_BUILD_MAX_CPU`: Maximum CPU cores for image build instances (default: 8)
+
+### Required GitHub Secrets
+
+- `ALIYUN_ACCESS_KEY_ID`: Alibaba Cloud access key ID
+- `ALIYUN_ACCESS_KEY_SECRET`: Alibaba Cloud access key secret
+- `GITHUB_TOKEN`: GitHub token for runner registration (with `repo` scope)
+
+## Advantages
+
+- **Native Builds**: AMD64 and ARM64 images built on native architecture instances, no QEMU emulation overhead
+- **Ultra-Low Cost**: ~¥0.05-0.1 per build using Spot instances
+- **Automatic Cleanup**: Instances self-destruct after build completion
+- **Flexible Merging**: On-demand multi-arch manifest merging
+- **Intelligent Image Management**: Automatic cleanup and version tracking
+- **Dynamic Resource Selection**: Optimal instance and disk type selection
+
+## Documentation
+
+For detailed configuration and requirements, see:
+
+- [Project Overview](requirements/01-overview.md)
+- [Workflow Details](requirements/02-workflows.md)
+- [Alibaba Cloud Configuration](requirements/03-aliyun-config.md)
+- [Runner Setup](requirements/04-runner-setup.md)
+- [Network Configuration](requirements/05-network.md)
+- [Troubleshooting](requirements/06-troubleshooting-self-destruct.md)
+- [Dynamic Instance Selection](requirements/07-dynamic-instance-selection.md)
+
+## License
+
+2-clause BSD License (see [LICENSE](LICENSE) file)
