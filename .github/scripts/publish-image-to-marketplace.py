@@ -51,7 +51,7 @@ def modify_image_share_permission(
         result = subprocess.run(
             cmd, capture_output=True, text=True, check=True, timeout=60
         )
-        print(f"Image share permission modified successfully", file=sys.stderr)
+        print("Image share permission modified successfully", file=sys.stderr)
         return True
     except subprocess.CalledProcessError as e:
         print(f"Failed to modify image share permission: {e.stderr}", file=sys.stderr)
@@ -81,12 +81,18 @@ def publish_to_marketplace(
     if is_public:
         # 注意：公开镜像需要特殊权限和审核流程
         # 这里仅作为示例，实际需要根据阿里云镜像市场的具体 API 实现
-        print("Warning: Public image publishing requires special permissions and review process", file=sys.stderr)
+        print(
+            "Warning: Public image publishing requires special permissions and review process",
+            file=sys.stderr,
+        )
         print("This is a placeholder implementation", file=sys.stderr)
         return False
 
     # 私有发布：保持镜像为私有，仅共享给特定账号
-    print("Image will remain private (not published to public marketplace)", file=sys.stderr)
+    print(
+        "Image will remain private (not published to public marketplace)",
+        file=sys.stderr,
+    )
     return True
 
 
@@ -111,7 +117,9 @@ def main():
 
     # 如果指定了共享账号，修改镜像共享权限
     if share_account_ids:
-        account_ids = [aid.strip() for aid in share_account_ids.split(",") if aid.strip()]
+        account_ids = [
+            aid.strip() for aid in share_account_ids.split(",") if aid.strip()
+        ]
         if account_ids:
             print(f"Sharing image with accounts: {account_ids}", file=sys.stderr)
             if not modify_image_share_permission(
@@ -138,4 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

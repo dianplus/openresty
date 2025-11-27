@@ -91,7 +91,10 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
         )
 
         if result.returncode != 0:
-            print(f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})", file=sys.stderr)
+            print(
+                f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})",
+                file=sys.stderr,
+            )
             if result.stderr:
                 print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
             return None
@@ -99,14 +102,17 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
         if result.stdout:
             try:
                 data = json.loads(result.stdout)
-                
+
                 # DescribeImageFromFamily 返回的镜像信息在 Image 字段中
                 if "Image" in data and data["Image"]:
                     image = data["Image"]
                     image_id = image.get("ImageId", "")
-                    
+
                     if image_id:
-                        print(f"Found latest image from family {image_family}: {image_id}", file=sys.stderr)
+                        print(
+                            f"Found latest image from family {image_family}: {image_id}",
+                            file=sys.stderr,
+                        )
                         return {"ImageId": image_id}
             except json.JSONDecodeError as e:
                 print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
@@ -114,41 +120,47 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
 
         return None
     except Exception as e:
-        print(f"Warning: Failed to query image from family {image_family}: {e}", file=sys.stderr)
+        print(
+            f"Warning: Failed to query image from family {image_family}: {e}",
+            file=sys.stderr,
+        )
         return None
 
 
 def get_image_id(region_id: str, arch: str) -> str:
     """
     获取镜像 ID 的统一函数
-    
+
     支持多种方式（按优先级）：
     1. 从镜像族系获取（ALIYUN_IMAGE_FAMILY）
     2. 从环境变量直接获取镜像 ID（ALIYUN_IMAGE_ID，向后兼容）
-    
+
     返回镜像 ID
     """
     # 方式1：优先从镜像族系获取
     image_family = os.environ.get("ALIYUN_IMAGE_FAMILY")
-    
+
     if image_family:
         print(f"Getting latest image from family: {image_family}", file=sys.stderr)
         image_info = get_image_from_family(region_id, image_family)
-        
+
         if image_info and image_info.get("ImageId"):
             return image_info["ImageId"]
         else:
-            print(f"Warning: Failed to get image from family {image_family}, falling back to ALIYUN_IMAGE_ID", file=sys.stderr)
-    
+            print(
+                f"Warning: Failed to get image from family {image_family}, falling back to ALIYUN_IMAGE_ID",
+                file=sys.stderr,
+            )
+
     # 方式2：从环境变量直接获取镜像 ID（向后兼容）
     image_id = os.environ.get("ALIYUN_IMAGE_ID")
-    
+
     if not image_id:
         error_exit(
             "Either ALIYUN_IMAGE_FAMILY or ALIYUN_IMAGE_ID must be set. "
             "If using ALIYUN_IMAGE_ID, it must be provided."
         )
-    
+
     return image_id
 
 
@@ -187,7 +199,9 @@ def parse_candidates_file(
                 vswitch_id = parts[2]
                 spot_price_limit = parts[3]
                 cpu_cores = int(parts[4]) if len(parts) > 4 and parts[4] else None
-                candidates.append((instance_type, zone_id, vswitch_id, spot_price_limit, cpu_cores))
+                candidates.append(
+                    (instance_type, zone_id, vswitch_id, spot_price_limit, cpu_cores)
+                )
 
     return candidates
 
@@ -388,7 +402,7 @@ def main():
     arch = os.environ.get("ARCH", "amd64")
     spot_price_limit = os.environ.get("SPOT_PRICE_LIMIT")
     candidates_file = os.environ.get("CANDIDATES_FILE")
-    
+
     # 使用统一函数获取镜像 ID（支持镜像族系）
     image_id = get_image_id(region_id, arch)
 
@@ -404,17 +418,16 @@ def main():
             "Aliyun CLI is not installed or not in PATH. "
             "Please ensure aliyun-cli-setup-action is used in the workflow"
         )
-    
+
     # 验证 Aliyun CLI 配置
     print("Verifying Aliyun CLI configuration...", file=sys.stderr)
     try:
-        subprocess.run(
-            ["aliyun", "configure", "get"],
-            capture_output=True,
-            check=False
-        )
+        subprocess.run(["aliyun", "configure", "get"], capture_output=True, check=False)
     except (subprocess.SubprocessError, FileNotFoundError):
-        print("Warning: Aliyun CLI configuration check failed, but continuing...", file=sys.stderr)
+        print(
+            "Warning: Aliyun CLI configuration check failed, but continuing...",
+            file=sys.stderr,
+        )
 
     # 读取 User Data
     user_data_content = read_user_data(user_data_file, user_data)
@@ -513,12 +526,15 @@ def main():
                     else:
                         # 尝试下一个磁盘类型
                         print(
-                            f"Failed to extract instance ID, trying next disk category...",
+                            "Failed to extract instance ID, trying next disk category...",
                             file=sys.stderr,
                         )
                 else:
                     # 检查错误信息，如果是磁盘类型不支持，尝试下一个
-                    if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                    if (
+                        "InvalidSystemDiskCategory" in response
+                        or "not support" in response.lower()
+                    ):
                         print(
                             f"Disk category {disk_category} not supported, trying next...",
                             file=sys.stderr,
@@ -530,7 +546,10 @@ def main():
 
             # 如果所有磁盘类型都失败了，记录错误并继续下一个候选
             if not instance_created:
-                print(f"Attempt {attempt} failed: All disk categories failed", file=sys.stderr)
+                print(
+                    f"Attempt {attempt} failed: All disk categories failed",
+                    file=sys.stderr,
+                )
                 if response:
                     print(f"Response: {response[:500]}...", file=sys.stderr)
 
@@ -598,13 +617,16 @@ def main():
                 else:
                     # 尝试下一个磁盘类型
                     print(
-                        f"Failed to extract instance ID, trying next disk category...",
+                        "Failed to extract instance ID, trying next disk category...",
                         file=sys.stderr,
                     )
                     last_error = response
             else:
                 # 检查错误信息，如果是磁盘类型不支持，尝试下一个
-                if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                if (
+                    "InvalidSystemDiskCategory" in response
+                    or "not support" in response.lower()
+                ):
                     print(
                         f"Disk category {disk_category} not supported, trying next...",
                         file=sys.stderr,

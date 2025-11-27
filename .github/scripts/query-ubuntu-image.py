@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Dict, Optional
+from typing import Optional
 
 
 def error_exit(message: str) -> None:
@@ -80,9 +80,7 @@ def query_images(
             return None
 
         # 按创建时间排序（最新的在前）
-        ubuntu24_images.sort(
-            key=lambda x: x.get("CreationTime", ""), reverse=True
-        )
+        ubuntu24_images.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
 
         return ubuntu24_images
 
@@ -151,4 +149,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

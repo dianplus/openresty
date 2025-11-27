@@ -72,12 +72,12 @@ aliyun --version
 # 安装 spot-instance-advisor
 echo "=== Installing spot-instance-advisor ==="
 """
-    
+
     if advisor_version:
         script += f'ADVISOR_VERSION="{advisor_version}"\n'
     else:
-        script += 'ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | jq -r \'.tag_name\' || echo "v1.0.1")\n'
-    
+        script += "ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | jq -r '.tag_name' || echo \"v1.0.1\")\n"
+
     script += f"""echo "Using spot-instance-advisor version: $ADVISOR_VERSION"
 ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${{ADVISOR_VERSION}}/spot-instance-advisor-linux-{advisor_arch}"
 curl -L -f -o /usr/local/bin/spot-instance-advisor "${{ADVISOR_URL}}"
@@ -394,7 +394,10 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
         )
 
         if result.returncode != 0:
-            print(f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})", file=sys.stderr)
+            print(
+                f"Warning: Failed to query image from family {image_family} (exit code: {result.returncode})",
+                file=sys.stderr,
+            )
             if result.stderr:
                 print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
             return None
@@ -402,17 +405,22 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
         if result.stdout:
             try:
                 data = json.loads(result.stdout)
-                
+
                 # DescribeImageFromFamily 返回的镜像信息在 Image 字段中
                 if "Image" in data and data["Image"]:
                     image = data["Image"]
                     image_id = image.get("ImageId", "")
                     image_name = image.get("ImageName", "")
                     creation_time = image.get("CreationTime", "")
-                    size_gb = image.get("Size", 0)  # DescribeImageFromFamily 返回的 Size 字段单位是 GB
-                    
+                    size_gb = image.get(
+                        "Size", 0
+                    )  # DescribeImageFromFamily 返回的 Size 字段单位是 GB
+
                     if image_id:
-                        print(f"Found latest image from family {image_family}: {image_id} ({image_name})", file=sys.stderr)
+                        print(
+                            f"Found latest image from family {image_family}: {image_id} ({image_name})",
+                            file=sys.stderr,
+                        )
                         result = {
                             "ImageId": image_id,
                             "ImageName": image_name,
@@ -421,12 +429,20 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
                         # 如果包含 Size 字段，直接以 GB 为单位添加到返回结果中
                         if size_gb:
                             result["Size"] = size_gb
-                            print(f"Image size from family: {size_gb}GB", file=sys.stderr)
+                            print(
+                                f"Image size from family: {size_gb}GB", file=sys.stderr
+                            )
                         return result
                     else:
-                        print(f"Warning: Image from family {image_family} has no ImageId", file=sys.stderr)
+                        print(
+                            f"Warning: Image from family {image_family} has no ImageId",
+                            file=sys.stderr,
+                        )
                 else:
-                    print(f"Warning: No image found in response for family {image_family}", file=sys.stderr)
+                    print(
+                        f"Warning: No image found in response for family {image_family}",
+                        file=sys.stderr,
+                    )
             except json.JSONDecodeError as e:
                 print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
                 if result.stderr:
@@ -435,10 +451,15 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
 
         return None
     except subprocess.TimeoutExpired:
-        print(f"Warning: Query image from family {image_family} timeout", file=sys.stderr)
+        print(
+            f"Warning: Query image from family {image_family} timeout", file=sys.stderr
+        )
         return None
     except Exception as e:
-        print(f"Warning: Failed to query image from family {image_family}: {e}", file=sys.stderr)
+        print(
+            f"Warning: Failed to query image from family {image_family}: {e}",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -479,7 +500,7 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
                         creation_time = image.get("CreationTime", "")
                         # DescribeImages API 返回的 Size 字段单位是 GB（与 DescribeImageFromFamily 一致）
                         size_gb = image.get("Size", 0)
-                        
+
                         if image_id_found == image_id:
                             result = {
                                 "ImageId": image_id,
@@ -504,36 +525,39 @@ def get_image_info_by_id(region_id: str, image_id: str) -> Optional[dict]:
 def get_base_image_info(region_id: str, arch: str) -> dict:
     """
     获取基础镜像信息的统一函数
-    
+
     支持多种方式（按优先级）：
     1. 从镜像族系获取（ALIYUN_IMAGE_FAMILY）
     2. 从环境变量直接获取镜像 ID（BASE_IMAGE_ID，向后兼容）
-    
+
     返回包含 ImageId, ImageName, CreationTime 的字典
     """
     # 方式1：优先从镜像族系获取
     image_family = os.environ.get("ALIYUN_IMAGE_FAMILY")
-    
+
     if image_family:
         print(f"Getting latest image from family: {image_family}", file=sys.stderr)
         image_info = get_image_from_family(region_id, image_family)
-        
+
         if image_info:
             return image_info
         else:
-            print(f"Warning: Failed to get image from family {image_family}, falling back to BASE_IMAGE_ID", file=sys.stderr)
-    
+            print(
+                f"Warning: Failed to get image from family {image_family}, falling back to BASE_IMAGE_ID",
+                file=sys.stderr,
+            )
+
     # 方式2：从环境变量直接获取镜像 ID（向后兼容）
     image_id = os.environ.get("BASE_IMAGE_ID")
     image_name = os.environ.get("BASE_IMAGE_NAME", "")
     image_creation_time = os.environ.get("BASE_IMAGE_CREATION_TIME", "")
-    
+
     if not image_id:
         error_exit(
             "Either ALIYUN_IMAGE_FAMILY or BASE_IMAGE_ID must be set. "
             "If using BASE_IMAGE_ID, it must be provided."
         )
-    
+
     # 如果只有镜像 ID，尝试查询镜像的详细信息
     image_size_gb = None
     if not image_name or not image_creation_time:
@@ -543,12 +567,18 @@ def get_base_image_info(region_id: str, arch: str) -> dict:
             image_name = image_info.get("ImageName", image_name)
             image_creation_time = image_info.get("CreationTime", image_creation_time)
             image_size_gb = image_info.get("Size")  # 已经转换为 GB
-            print(f"Found image details: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
+            print(
+                f"Found image details: {image_id} ({image_name}, created: {image_creation_time})",
+                file=sys.stderr,
+            )
             if image_size_gb:
                 print(f"Image size from query: {image_size_gb}GB", file=sys.stderr)
         else:
-            print(f"Warning: Failed to query image details for {image_id}, using provided values", file=sys.stderr)
-    
+            print(
+                f"Warning: Failed to query image details for {image_id}, using provided values",
+                file=sys.stderr,
+            )
+
     result = {
         "ImageId": image_id,
         "ImageName": image_name,
@@ -593,22 +623,36 @@ def get_image_size(region_id: str, image_id: str) -> Optional[int]:
                         # DescribeImages API 返回的 Size 字段单位是 GB（与 DescribeImageFromFamily 一致）
                         size_gb = image.get("Size", 0)
                         if size_gb:
-                            print(f"Successfully queried image size: {size_gb}GB", file=sys.stderr)
+                            print(
+                                f"Successfully queried image size: {size_gb}GB",
+                                file=sys.stderr,
+                            )
                             return int(size_gb)  # 确保返回整数
                         else:
-                            print(f"Warning: Image {image_id} has no Size field", file=sys.stderr)
+                            print(
+                                f"Warning: Image {image_id} has no Size field",
+                                file=sys.stderr,
+                            )
                     else:
-                        print(f"Warning: No image found in response for {image_id}", file=sys.stderr)
+                        print(
+                            f"Warning: No image found in response for {image_id}",
+                            file=sys.stderr,
+                        )
                 except json.JSONDecodeError as e:
                     # JSON 解析失败，继续尝试下一种格式
-                    print(f"Warning: Failed to parse JSON response: {e}", file=sys.stderr)
+                    print(
+                        f"Warning: Failed to parse JSON response: {e}", file=sys.stderr
+                    )
                     if result.stderr:
                         print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
                     continue
 
             # 如果返回码非零，输出错误信息
             if result.returncode != 0:
-                print(f"Warning: Command failed with exit code {result.returncode}", file=sys.stderr)
+                print(
+                    f"Warning: Command failed with exit code {result.returncode}",
+                    file=sys.stderr,
+                )
                 if result.stderr:
                     print(f"Error output: {result.stderr[:200]}", file=sys.stderr)
                 continue
@@ -620,7 +664,10 @@ def get_image_size(region_id: str, image_id: str) -> Optional[int]:
             print(f"Warning: Failed to query image size: {e}", file=sys.stderr)
             continue
 
-    print(f"Warning: Failed to query image size for {image_id} after trying all formats", file=sys.stderr)
+    print(
+        f"Warning: Failed to query image size for {image_id} after trying all formats",
+        file=sys.stderr,
+    )
     return None
 
 
@@ -721,15 +768,21 @@ def create_instance(
         image_size_gb = get_image_size(region_id, image_id)
     else:
         print(f"Using provided image size: {image_size_gb}GB", file=sys.stderr)
-    
+
     if image_size_gb:
         # 系统盘大小 = 镜像大小 + 10GB（用于安装工具和临时文件）
         system_disk_size = image_size_gb + 10
-        print(f"Image size: {image_size_gb}GB, setting system disk size to {system_disk_size}GB", file=sys.stderr)
+        print(
+            f"Image size: {image_size_gb}GB, setting system disk size to {system_disk_size}GB",
+            file=sys.stderr,
+        )
     else:
         # 如果查询失败，使用默认值（假设基础镜像约 20GB，加上 10GB 用于工具）
         system_disk_size = 30
-        print(f"Failed to query image size, using default system disk size: {system_disk_size}GB", file=sys.stderr)
+        print(
+            f"Failed to query image size, using default system disk size: {system_disk_size}GB",
+            file=sys.stderr,
+        )
 
     cmd = [
         "aliyun",
@@ -787,7 +840,9 @@ def create_instance(
             tag_index += 1
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=60
+        )
         return result.returncode, result.stdout + result.stderr
     except (subprocess.SubprocessError, OSError) as e:
         return 1, str(e)
@@ -918,7 +973,9 @@ def create_image(
             tag_index += 1
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=60
+        )
         return result.returncode, result.stdout + result.stderr
     except (subprocess.SubprocessError, OSError) as e:
         return 1, str(e)
@@ -941,9 +998,7 @@ def extract_image_id(response: str) -> Optional[str]:
     return None
 
 
-def wait_for_image_ready(
-    region_id: str, image_id: str, timeout: int = 3600
-) -> bool:
+def wait_for_image_ready(region_id: str, image_id: str, timeout: int = 3600) -> bool:
     """等待镜像创建完成"""
     print(f"Waiting for image {image_id} to be ready...", file=sys.stderr)
     start_time = time.time()
@@ -991,7 +1046,7 @@ def wait_for_image_ready(
                                 return True
                             elif status == "CreateFailed":
                                 error_exit("Image creation failed")
-                            
+
                             # 成功解析到镜像信息
                             success = True
                             consecutive_errors = 0
@@ -1023,7 +1078,7 @@ def wait_for_image_ready(
                 )
                 if last_result.stderr:
                     print(f"Error output: {last_result.stderr}", file=sys.stderr)
-            
+
             # 如果连续多次错误，输出警告但继续等待
             if consecutive_errors >= max_consecutive_errors:
                 print(
@@ -1054,7 +1109,9 @@ def delete_instance(region_id: str, instance_id: str) -> bool:
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=False, timeout=60
+        )
         if result.returncode == 0:
             print("Instance deleted successfully", file=sys.stderr)
             return True
@@ -1097,9 +1154,15 @@ def check_existing_image(
             for image in data["Images"]["Image"]:
                 tags = image.get("Tags", {}).get("Tag", [])
                 for tag in tags:
-                    if tag.get("TagKey") == "VersionHash" and tag.get("TagValue") == version_hash:
+                    if (
+                        tag.get("TagKey") == "VersionHash"
+                        and tag.get("TagValue") == version_hash
+                    ):
                         image_id = image.get("ImageId", "")
-                        print(f"Found existing image with matching version: {image_id}", file=sys.stderr)
+                        print(
+                            f"Found existing image with matching version: {image_id}",
+                            file=sys.stderr,
+                        )
                         return image_id
 
         return None
@@ -1108,9 +1171,7 @@ def check_existing_image(
         return None
 
 
-def list_images_by_name(
-    region_id: str, image_name: str
-) -> list:
+def list_images_by_name(region_id: str, image_name: str) -> list:
     """列出指定名称的所有镜像（按创建时间排序）"""
     cmd = [
         "aliyun",
@@ -1137,9 +1198,7 @@ def list_images_by_name(
         ):
             images = data["Images"]["Image"]
             # 按创建时间排序（最新的在前）
-            images.sort(
-                key=lambda x: x.get("CreationTime", ""), reverse=True
-            )
+            images.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
             return images
 
         return []
@@ -1148,21 +1207,19 @@ def list_images_by_name(
         return []
 
 
-def list_images_by_prefix(
-    region_id: str, image_name_prefix: str
-) -> list:
+def list_images_by_prefix(region_id: str, image_name_prefix: str) -> list:
     """
     列出所有前缀匹配的镜像（包括 -latest 和日期时间后缀的）
-    
+
     Args:
         region_id: 区域ID
         image_name_prefix: 镜像名称前缀（例如：github-runner-ubuntu24-amd64）
-    
+
     Returns:
         所有匹配前缀的镜像列表（按创建时间排序，最新的在前）
     """
     import re
-    
+
     # 查询所有自定义镜像（使用 ImageOwnerAlias=self）
     cmd = [
         "aliyun",
@@ -1188,22 +1245,22 @@ def list_images_by_prefix(
             and len(data["Images"]["Image"]) > 0
         ):
             all_images = data["Images"]["Image"]
-            
+
             # 筛选前缀匹配的镜像
             # 匹配规则：前缀 + "-latest" 或 前缀 + "-" + 日期时间（12位数字）
-            pattern = re.compile(rf"^{re.escape(image_name_prefix)}(-latest|-(\d{{12}}))$")
+            pattern = re.compile(
+                rf"^{re.escape(image_name_prefix)}(-latest|-(\d{{12}}))$"
+            )
             matched_images = []
-            
+
             for image in all_images:
                 image_name = image.get("ImageName", "")
                 if pattern.match(image_name):
                     matched_images.append(image)
-            
+
             # 按创建时间排序（最新的在前）
-            matched_images.sort(
-                key=lambda x: x.get("CreationTime", ""), reverse=True
-            )
-            
+            matched_images.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
+
             return matched_images
 
         return []
@@ -1235,16 +1292,16 @@ def delete_image(region_id: str, image_id: str) -> bool:
             print(f"Image {image_id} deleted successfully", file=sys.stderr)
             return True
         else:
-            print(f"Failed to delete image {image_id}: {result.stderr}", file=sys.stderr)
+            print(
+                f"Failed to delete image {image_id}: {result.stderr}", file=sys.stderr
+            )
             return False
     except (subprocess.SubprocessError, OSError) as e:
         print(f"Error deleting image {image_id}: {e}", file=sys.stderr)
         return False
 
 
-def modify_image_name(
-    region_id: str, image_id: str, new_image_name: str
-) -> bool:
+def modify_image_name(region_id: str, image_id: str, new_image_name: str) -> bool:
     """修改镜像名称"""
     print(f"Renaming image {image_id} to {new_image_name}...", file=sys.stderr)
     cmd = [
@@ -1264,10 +1321,15 @@ def modify_image_name(
             cmd, capture_output=True, text=True, check=False, timeout=60
         )
         if result.returncode == 0:
-            print(f"Image {image_id} renamed to {new_image_name} successfully", file=sys.stderr)
+            print(
+                f"Image {image_id} renamed to {new_image_name} successfully",
+                file=sys.stderr,
+            )
             return True
         else:
-            print(f"Failed to rename image {image_id}: {result.stderr}", file=sys.stderr)
+            print(
+                f"Failed to rename image {image_id}: {result.stderr}", file=sys.stderr
+            )
             return False
     except (subprocess.SubprocessError, OSError) as e:
         print(f"Error renaming image {image_id}: {e}", file=sys.stderr)
@@ -1283,7 +1345,7 @@ def cleanup_old_images(
 ) -> None:
     """
     清理旧版本镜像：重命名旧镜像并保留指定数量，删除多余的
-    
+
     Args:
         region_id: 区域ID
         image_name: 镜像名称（应该以 -latest 结尾）
@@ -1292,20 +1354,23 @@ def cleanup_old_images(
         rename_only: 如果为 True，只重命名镜像，不删除（用于创建新镜像前的清理）
     """
     from datetime import datetime
-    
+
     images = list_images_by_name(region_id, image_name)
-    
+
     if len(images) == 0:
-        print(f"No existing images found with name {image_name}, no cleanup needed", file=sys.stderr)
+        print(
+            f"No existing images found with name {image_name}, no cleanup needed",
+            file=sys.stderr,
+        )
         return
-    
+
     # 按创建时间排序（最新的在前）
-    images.sort(
-        key=lambda x: x.get("CreationTime", ""), reverse=True
+    images.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
+
+    print(
+        f"Found {len(images)} existing image(s) with name {image_name}", file=sys.stderr
     )
-    
-    print(f"Found {len(images)} existing image(s) with name {image_name}", file=sys.stderr)
-    
+
     # 重命名所有同名镜像（为新镜像让路）
     # 规则：如果镜像名称以 -latest 结尾，去掉 -latest 后加上日期后缀
     # 注意：排除新创建的镜像（exclude_image_id），它应该保持 -latest 后缀
@@ -1313,12 +1378,15 @@ def cleanup_old_images(
         image_id = image.get("ImageId", "")
         creation_time = image.get("CreationTime", "")
         image_name_display = image.get("ImageName", "")
-        
+
         # 跳过要排除的镜像（通常是新创建的镜像）
         if exclude_image_id and image_id == exclude_image_id:
-            print(f"Skipping newly created image {image_id} (keeping -latest suffix)", file=sys.stderr)
+            print(
+                f"Skipping newly created image {image_id} (keeping -latest suffix)",
+                file=sys.stderr,
+            )
             continue
-        
+
         # 只重命名名称完全匹配的镜像（即还是 -latest 的镜像）
         if image_name_display == image_name:
             # 解析创建时间，生成日期后缀
@@ -1327,7 +1395,7 @@ def cleanup_old_images(
                 dt = datetime.fromisoformat(creation_time.replace("Z", "+00:00"))
                 # 日期格式：YYYYMMDDHHMM（例如：202511192049）
                 date_suffix = dt.strftime("%Y%m%d%H%M")
-                
+
                 # 去掉末尾的 -latest，然后加上日期后缀
                 if image_name.endswith("-latest"):
                     base_name = image_name[:-7]  # 去掉 "-latest" (7个字符)
@@ -1335,79 +1403,117 @@ def cleanup_old_images(
                 else:
                     # 如果不以 -latest 结尾，直接加上日期后缀
                     new_name = f"{image_name}-{date_suffix}"
-                
+
                 # 重命名镜像
                 if modify_image_name(region_id, image_id, new_name):
-                    print(f"Renamed image {image_id} from {image_name_display} to {new_name}", file=sys.stderr)
+                    print(
+                        f"Renamed image {image_id} from {image_name_display} to {new_name}",
+                        file=sys.stderr,
+                    )
                 else:
-                    print(f"Warning: Failed to rename image {image_id}, will delete it instead", file=sys.stderr)
+                    print(
+                        f"Warning: Failed to rename image {image_id}, will delete it instead",
+                        file=sys.stderr,
+                    )
                     # 重命名失败，直接删除
                     delete_image(region_id, image_id)
             except (ValueError, AttributeError) as e:
-                print(f"Warning: Failed to parse creation time {creation_time}: {e}, will delete image", file=sys.stderr)
+                print(
+                    f"Warning: Failed to parse creation time {creation_time}: {e}, will delete image",
+                    file=sys.stderr,
+                )
                 delete_image(region_id, image_id)
-    
+
     # 如果只需要重命名，不删除，直接返回
     if rename_only:
         print("Rename-only mode: skipping deletion step", file=sys.stderr)
         return
-    
+
     # 提取镜像名称前缀（去掉 -latest 后缀）
     if image_name.endswith("-latest"):
         image_name_prefix = image_name[:-7]  # 去掉 "-latest" (7个字符)
     else:
         image_name_prefix = image_name
-    
+
     # 查询所有前缀相同的镜像（包括 -latest 和日期时间后缀的）
     all_images_with_prefix = list_images_by_prefix(region_id, image_name_prefix)
-    
+
     # 排除新创建的镜像（如果指定）
     if exclude_image_id:
-        all_images_with_prefix = [img for img in all_images_with_prefix if img.get("ImageId") != exclude_image_id]
-    
+        all_images_with_prefix = [
+            img
+            for img in all_images_with_prefix
+            if img.get("ImageId") != exclude_image_id
+        ]
+
     # 统计总数
     total_count = len(all_images_with_prefix)
-    print(f"Total images with prefix {image_name_prefix}: {total_count} (including -latest and date-suffixed)", file=sys.stderr)
-    
-    if total_count <= keep_count:
-        print(f"Total image count ({total_count}) is within limit ({keep_count}), no deletion needed", file=sys.stderr)
-        return
-    
-    # 按创建时间排序（最新的在前）
-    all_images_with_prefix.sort(
-        key=lambda x: x.get("CreationTime", ""), reverse=True
+    print(
+        f"Total images with prefix {image_name_prefix}: {total_count} (including -latest and date-suffixed)",
+        file=sys.stderr,
     )
-    
+
+    if total_count <= keep_count:
+        print(
+            f"Total image count ({total_count}) is within limit ({keep_count}), no deletion needed",
+            file=sys.stderr,
+        )
+        return
+
+    # 按创建时间排序（最新的在前）
+    all_images_with_prefix.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
+
     # 分离 -latest 镜像和日期时间后缀镜像
-    latest_images = [img for img in all_images_with_prefix if img.get("ImageName", "").endswith("-latest")]
-    dated_images = [img for img in all_images_with_prefix if not img.get("ImageName", "").endswith("-latest")]
-    
-    print(f"Found {len(latest_images)} -latest image(s) and {len(dated_images)} date-suffixed image(s)", file=sys.stderr)
-    
+    latest_images = [
+        img
+        for img in all_images_with_prefix
+        if img.get("ImageName", "").endswith("-latest")
+    ]
+    dated_images = [
+        img
+        for img in all_images_with_prefix
+        if not img.get("ImageName", "").endswith("-latest")
+    ]
+
+    print(
+        f"Found {len(latest_images)} -latest image(s) and {len(dated_images)} date-suffixed image(s)",
+        file=sys.stderr,
+    )
+
     # 计算需要删除的数量
     # 保留策略：优先保留 -latest 镜像，然后保留最新的日期时间后缀镜像
     # 如果 -latest 镜像数量已经达到 keep_count，只删除日期时间后缀镜像
     # 否则，保留最新的 keep_count 个镜像（包括 -latest）
-    
+
     if len(latest_images) >= keep_count:
         # 如果 -latest 镜像已经达到或超过保留数量，只保留最新的 keep_count 个 -latest 镜像
         # 删除所有日期时间后缀镜像和多余的 -latest 镜像
         images_to_keep = latest_images[:keep_count]
-        images_to_delete = [img for img in all_images_with_prefix if img not in images_to_keep]
+        images_to_delete = [
+            img for img in all_images_with_prefix if img not in images_to_keep
+        ]
     else:
         # 保留所有 -latest 镜像，然后保留最新的日期时间后缀镜像，使总数不超过 keep_count
         remaining_slots = keep_count - len(latest_images)
         images_to_keep = latest_images + dated_images[:remaining_slots]
-        images_to_delete = [img for img in all_images_with_prefix if img not in images_to_keep]
-    
-    print(f"Keeping {len(images_to_keep)} image(s), deleting {len(images_to_delete)} old one(s)", file=sys.stderr)
-    
+        images_to_delete = [
+            img for img in all_images_with_prefix if img not in images_to_keep
+        ]
+
+    print(
+        f"Keeping {len(images_to_keep)} image(s), deleting {len(images_to_delete)} old one(s)",
+        file=sys.stderr,
+    )
+
     # 删除多余的镜像（只删除日期时间后缀的镜像，不删除 -latest 镜像）
     for image in images_to_delete:
         image_id = image.get("ImageId", "")
         image_name_display = image.get("ImageName", "")
         creation_time = image.get("CreationTime", "")
-        print(f"Deleting old image: {image_id} ({image_name_display}, created: {creation_time})", file=sys.stderr)
+        print(
+            f"Deleting old image: {image_id} ({image_name_display}, created: {creation_time})",
+            file=sys.stderr,
+        )
         delete_image(region_id, image_id)
 
 
@@ -1436,8 +1542,11 @@ def main():
     image_name = base_image_info.get("ImageName", "")
     image_creation_time = base_image_info.get("CreationTime", "")
     image_size_gb = base_image_info.get("Size")  # Size 字段单位是 GB（如果存在）
-    
-    print(f"Using base image: {image_id} ({image_name}, created: {image_creation_time})", file=sys.stderr)
+
+    print(
+        f"Using base image: {image_id} ({image_name}, created: {image_creation_time})",
+        file=sys.stderr,
+    )
 
     # 检查 Aliyun CLI 是否已安装
     try:
@@ -1450,19 +1559,24 @@ def main():
 
     # 生成版本哈希（用于镜像标签，无论是否强制构建都需要）
     version_hash = f"{image_id}_{image_creation_time}"
-    
+
     # 检查是否强制构建（跳过版本检查）
     force_build = os.environ.get("FORCE_BUILD", "false").lower() == "true"
-    
+
     if force_build:
         print("Force build enabled, skipping version check", file=sys.stderr)
     else:
         # 检查是否已存在相同版本的镜像
-        existing_image_id = check_existing_image(region_id, image_name_prefix, version_hash)
+        existing_image_id = check_existing_image(
+            region_id, image_name_prefix, version_hash
+        )
         if existing_image_id:
             print(f"IMAGE_ID={existing_image_id}", file=sys.stdout)
-            print(f"SKIP_BUILD=true", file=sys.stdout)
-            print("Image with matching version already exists, skipping build", file=sys.stderr)
+            print("SKIP_BUILD=true", file=sys.stdout)
+            print(
+                "Image with matching version already exists, skipping build",
+                file=sys.stderr,
+            )
             return
 
     # 创建 User Data 脚本
@@ -1470,8 +1584,10 @@ def main():
     # 替换版本信息变量（在脚本中通过环境变量传递）
     user_data_script = user_data_script.replace("${BASE_IMAGE_ID}", image_id)
     user_data_script = user_data_script.replace("${BASE_IMAGE_NAME}", image_name)
-    user_data_script = user_data_script.replace("${BASE_IMAGE_CREATION_TIME}", image_creation_time)
-    
+    user_data_script = user_data_script.replace(
+        "${BASE_IMAGE_CREATION_TIME}", image_creation_time
+    )
+
     # 编码 User Data
     user_data_b64 = base64.b64encode(user_data_script.encode("utf-8")).decode("ascii")
 
@@ -1488,7 +1604,10 @@ def main():
     instance_id = None
     if candidates_file and os.path.isfile(candidates_file):
         # 使用候选结果文件进行重试
-        print(f"Using candidates file for retry mechanism: {candidates_file}", file=sys.stderr)
+        print(
+            f"Using candidates file for retry mechanism: {candidates_file}",
+            file=sys.stderr,
+        )
         with open(candidates_file, "r", encoding="utf-8") as f:
             candidates = [line.strip() for line in f if line.strip()]
 
@@ -1506,16 +1625,26 @@ def main():
 
             if not cand_vswitch_id:
                 # 尝试从可用区获取 VSwitch ID
-                cand_vswitch_id = get_vswitch_id(cand_zone_id) if cand_zone_id else vswitch_id
+                cand_vswitch_id = (
+                    get_vswitch_id(cand_zone_id) if cand_zone_id else vswitch_id
+                )
 
             if not cand_vswitch_id:
-                print(f"Skipping candidate {candidate_count}: No VSwitch ID", file=sys.stderr)
+                print(
+                    f"Skipping candidate {candidate_count}: No VSwitch ID",
+                    file=sys.stderr,
+                )
                 continue
 
-            print(f"Attempt {candidate_count}: Trying instance type {cand_instance_type} in zone {cand_zone_id}", file=sys.stderr)
+            print(
+                f"Attempt {candidate_count}: Trying instance type {cand_instance_type} in zone {cand_zone_id}",
+                file=sys.stderr,
+            )
 
             # 确定 Spot 策略
-            spot_strategy = "SpotWithPriceLimit" if cand_spot_price_limit else "SpotAsPriceGo"
+            spot_strategy = (
+                "SpotWithPriceLimit" if cand_spot_price_limit else "SpotAsPriceGo"
+            )
 
             # 创建实例（支持磁盘类型降级）
             disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
@@ -1558,14 +1687,17 @@ def main():
                     else:
                         # 尝试下一个磁盘类型
                         print(
-                            f"Failed to extract instance ID, trying next disk category...",
+                            "Failed to extract instance ID, trying next disk category...",
                             file=sys.stderr,
                         )
                         last_error = response
                 else:
                     # 记录错误信息，继续尝试下一个磁盘类型
                     last_error = response
-                    if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                    if (
+                        "InvalidSystemDiskCategory" in response
+                        or "not support" in response.lower()
+                    ):
                         print(
                             f"Disk category {disk_category} not supported, trying next...",
                             file=sys.stderr,
@@ -1578,20 +1710,29 @@ def main():
                         )
                         if response:
                             # 只输出错误的前200个字符，避免日志过长
-                            error_preview = response[:200] + ("..." if len(response) > 200 else "")
+                            error_preview = response[:200] + (
+                                "..." if len(response) > 200 else ""
+                            )
                             print(f"Error preview: {error_preview}", file=sys.stderr)
 
             if instance_created:
                 break
             else:
-                print(f"Failed to create instance (attempt {candidate_count}): All disk categories failed", file=sys.stderr)
+                print(
+                    f"Failed to create instance (attempt {candidate_count}): All disk categories failed",
+                    file=sys.stderr,
+                )
                 if last_error:
                     # 只输出错误的前200个字符，避免日志过长
-                    error_preview = last_error[:200] + ("..." if len(last_error) > 200 else "")
+                    error_preview = last_error[:200] + (
+                        "..." if len(last_error) > 200 else ""
+                    )
                     print(f"Last error preview: {error_preview}", file=sys.stderr)
 
         if not instance_id:
-            error_exit(f"Failed to create Spot instance after {candidate_count} attempts")
+            error_exit(
+                f"Failed to create Spot instance after {candidate_count} attempts"
+            )
     else:
         # 没有候选结果文件，使用单次尝试
         if not instance_type:
@@ -1643,14 +1784,17 @@ def main():
                 else:
                     # 尝试下一个磁盘类型
                     print(
-                        f"Failed to extract instance ID, trying next disk category...",
+                        "Failed to extract instance ID, trying next disk category...",
                         file=sys.stderr,
                     )
                     last_error = response
             else:
                 # 记录错误信息，继续尝试下一个磁盘类型
                 last_error = response
-                if "InvalidSystemDiskCategory" in response or "not support" in response.lower():
+                if (
+                    "InvalidSystemDiskCategory" in response
+                    or "not support" in response.lower()
+                ):
                     print(
                         f"Disk category {disk_category} not supported, trying next...",
                         file=sys.stderr,
@@ -1663,7 +1807,9 @@ def main():
                     )
                     if response:
                         # 只输出错误的前200个字符，避免日志过长
-                        error_preview = response[:200] + ("..." if len(response) > 200 else "")
+                        error_preview = response[:200] + (
+                            "..." if len(response) > 200 else ""
+                        )
                         print(f"Error preview: {error_preview}", file=sys.stderr)
 
         # 所有磁盘类型都失败了
@@ -1691,12 +1837,21 @@ def main():
         # 创建自定义镜像（使用固定名称，便于引用）
         # 命名规则：{prefix}-{arch}-latest（类似 Docker 的 ubuntu:latest）
         image_name_latest = f"{image_name_prefix}-{arch}-latest"
-        
+
         # 在创建新镜像前，先处理旧镜像（只重命名，不删除）
         keep_count = int(os.environ.get("KEEP_IMAGE_COUNT", "5"))
-        print(f"Processing existing images with name {image_name_latest} (renaming old images to make room for new one)", file=sys.stderr)
-        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=None, rename_only=True)
-        
+        print(
+            f"Processing existing images with name {image_name_latest} (renaming old images to make room for new one)",
+            file=sys.stderr,
+        )
+        cleanup_old_images(
+            region_id,
+            image_name_latest,
+            keep_count,
+            exclude_image_id=None,
+            rename_only=True,
+        )
+
         description = f"Custom Ubuntu 24 image for {arch} with pre-installed tools (base: {image_id})"
         tags = {
             "VersionHash": version_hash,
@@ -1730,22 +1885,29 @@ def main():
 
         # 再次清理旧版本镜像（确保不超过保留数量）
         # 注意：排除新创建的镜像，它应该保持 -latest 后缀
-        print(f"Final cleanup of old images (keeping {keep_count} latest)", file=sys.stderr)
-        cleanup_old_images(region_id, image_name_latest, keep_count, exclude_image_id=image_id_new)
+        print(
+            f"Final cleanup of old images (keeping {keep_count} latest)",
+            file=sys.stderr,
+        )
+        cleanup_old_images(
+            region_id, image_name_latest, keep_count, exclude_image_id=image_id_new
+        )
 
         # 输出结果
         print(f"IMAGE_ID={image_id_new}", file=sys.stdout)
         print(f"IMAGE_NAME={image_name_latest}", file=sys.stdout)
-        print(f"SKIP_BUILD=false", file=sys.stdout)
+        print("SKIP_BUILD=false", file=sys.stdout)
 
     finally:
         # 清理临时实例（如果自毁机制失败，作为备用）
         # 注意：如果 RAM 角色配置正确，实例应该已经通过自毁机制删除
         if instance_id:
-            print("Attempting to delete instance as fallback (self-destruct should have already done this)", file=sys.stderr)
+            print(
+                "Attempting to delete instance as fallback (self-destruct should have already done this)",
+                file=sys.stderr,
+            )
             delete_instance(region_id, instance_id)
 
 
 if __name__ == "__main__":
     main()
-

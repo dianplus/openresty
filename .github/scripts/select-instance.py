@@ -220,13 +220,13 @@ def main():
     # 处理空字符串的情况（GitHub Actions workflow_dispatch inputs 可能返回空字符串）
     min_cpu_str = os.environ.get("MIN_CPU", "").strip()
     min_cpu = int(min_cpu_str) if min_cpu_str else 8
-    
+
     max_cpu_str = os.environ.get("MAX_CPU", "").strip()
     max_cpu = int(max_cpu_str) if max_cpu_str else 64
-    
+
     min_mem_str = os.environ.get("MIN_MEM", "").strip()
     max_mem_str = os.environ.get("MAX_MEM", "").strip()
-    
+
     if arch == "amd64":
         if min_mem_str:
             min_mem = int(min_mem_str)
@@ -353,8 +353,13 @@ def main():
     price_per_core = None
     cpu_cores = None
     vswitch_id = None
-    
-    for cand_instance_type, cand_zone_id, cand_price_per_core, cand_cpu_cores in candidates:
+
+    for (
+        cand_instance_type,
+        cand_zone_id,
+        cand_price_per_core,
+        cand_cpu_cores,
+    ) in candidates:
         cand_vswitch_id = get_vswitch_id(cand_zone_id)
         if cand_vswitch_id:
             # 找到第一个有 VSwitch ID 的候选结果
@@ -364,7 +369,7 @@ def main():
             cpu_cores = cand_cpu_cores
             vswitch_id = cand_vswitch_id
             break
-    
+
     # 如果所有候选结果都没有 VSwitch ID，报错
     if not instance_type:
         error_exit(
@@ -391,11 +396,11 @@ def main():
         if not cand_vswitch_id:
             # 跳过没有 VSwitch ID 的候选（会在后续步骤中被跳过）
             continue
-        
+
         # 计算 Spot Price Limit
         cand_total_price = cand_price_per_core * cand_cpu_cores
         cand_spot_price_limit = cand_total_price * 1.2
-        
+
         candidates_file.write(
             f"{cand_instance_type}|{cand_zone_id}|{cand_vswitch_id}|{cand_spot_price_limit:.4f}|{cand_cpu_cores}\n"
         )

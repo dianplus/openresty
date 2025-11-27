@@ -64,13 +64,11 @@ def get_image_id_by_name(
             and len(data["Images"]["Image"]) > 0
         ):
             images = data["Images"]["Image"]
-            
+
             # 如果有多个镜像，按创建时间排序（最新的在前）
             if len(images) > 1:
-                images.sort(
-                    key=lambda x: x.get("CreationTime", ""), reverse=True
-                )
-            
+                images.sort(key=lambda x: x.get("CreationTime", ""), reverse=True)
+
             # 返回第一个（最新的）镜像 ID
             image_id = images[0].get("ImageId", "")
             if image_id:
@@ -115,7 +113,7 @@ def main():
 
     # 输出结果（用于 GitHub Actions 捕获）
     print(f"IMAGE_ID={image_id}", file=sys.stdout)
-    
+
     # 输出调试信息到标准错误
     print(f"Found image: {image_name}", file=sys.stderr)
     print(f"  Image ID: {image_id}", file=sys.stderr)
@@ -125,4 +123,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
