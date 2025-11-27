@@ -1,11 +1,110 @@
+# Project specific
 /.project
 !/.idea/
-.env
-.env-local
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
 ITERATION_PLAN.md
 spot-instance-advisor
+
+# Environment variables
+.env
+.env-local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+
+# IDE - PyCharm
+# Note: !/.idea/ is explicitly allowed in project-specific section
+*.iml
+*.iws
+*.ipr
+
+# IDE - Other
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+*.dockerignore
+
+# Build artifacts
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# CI/CD
+.github/workflows/*.local.yml
+.circleci/local.yml
+
+# Pre-commit
+.pre-commit-config.local.yaml
