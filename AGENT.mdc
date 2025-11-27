@@ -1,0 +1,17 @@
+---
+description: Project rules index - main entry point for AI coding assistants
+globs:
+alwaysApply: true
+---
+# Project Rules Index
+
+This file serves as the main entry point for AI coding assistants. For detailed rules, see the corresponding `.mdc` files in `.cursor/rules/`:
+
+**Note**: This project uses the modern Cursor `.cursor/rules/` system. The deprecated `.cursorrules` file has been removed.
+
+- **01 · Python Fundamentals**: `.cursor/rules/01-python-basics.mdc`
+  - Core Python typing rules, Pydantic usage basics, and annotation requirements.
+- **02 · FastAPI & Pydantic Schema**: `.cursor/rules/02-fastapi-schema.mdc`
+  - Detailed schema design guidelines, request/response separation, and validation rules for FastAPI services.
+
+Add new `.mdc` files to `.cursor/rules/` and reference them here when additional rule sets are introduced.
