@@ -1,0 +1,91 @@
+---
+description: Shell 脚本基础规范（精简版）
+globs:
+- '**/*.sh'
+- '**/*.bash'
+alwaysApply: false
+tags:
+- shell
+- bash
+- scripting
+version: 1.0.0
+author: ai-coding-rules-team
+---
+
+# Shell 脚本基础规范（精简版）
+
+## Shebang 和基础设置
+
+- 使用 `#!/usr/bin/env bash`
+- 在脚本开头使用 `set -euo pipefail`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+```
+
+## 命名规范
+
+- 文件名：kebab-case（`deploy-app.sh`）
+- 函数名：snake_case（`deploy_application`）
+- 常量：UPPER_SNAKE_CASE，使用 `readonly`
+- 普通变量：snake_case，使用 `local`
+
+```bash
+readonly MAX_RETRIES=3
+local user_name="admin"
+```
+
+## 代码组织
+
+- 按顺序：Shebang → 常量 → 函数 → 主逻辑
+- 使用主函数模式
+
+```bash
+main() {
+  deploy_application
+}
+main "$@"
+```
+
+## 变量和参数
+
+- 使用 `${variable}` 引用变量
+- 使用 `$1`, `$2`, `$@` 处理参数
+- 使用 `readonly` 声明常量
+
+```bash
+readonly script_name="$1"
+if [[ $# -lt 1 ]]; then
+  echo "用法: $0 <script_name>"
+  exit 1
+fi
+```
+
+## 字符串处理
+
+- 单引号：字面量，不进行变量替换
+- 双引号：允许变量替换
+- 使用 `${variable:-default}` 提供默认值
+
+```bash
+readonly greeting="Hello, ${user_name}!"
+readonly port="${PORT:-8080}"
+```
+
+## 开发流程
+
+### 脚本开发步骤
+
+1. 先实现基本功能
+2. 添加错误处理（`set -euo pipefail`）
+3. 优化用户体验（日志、提示）
+4. 编写测试
+5. 代码审查和重构
+
+### 功能开发原则
+
+- 优先实现 MVP
+- 每个功能完成后立即测试
+- 保持函数独立性
+- 通过重构改善质量

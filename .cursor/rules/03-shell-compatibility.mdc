@@ -1,0 +1,113 @@
+---
+description: Shell 脚本跨平台兼容性规范（精简版）
+globs:
+- '**/*.sh'
+- '**/*.bash'
+alwaysApply: false
+tags:
+- shell
+- bash
+- compatibility
+- cross-platform
+version: 1.0.0
+author: ai-coding-rules-team
+---
+
+# Shell 脚本跨平台兼容性规范（精简版）
+
+## 工具版本检测
+
+- 使用 `--version` 检测 GNU 工具
+- 检测操作系统（`uname -s`）
+- 使用 `command -v` 检测工具可用性
+
+```bash
+is_gnu_command() {
+  local cmd="$1"
+  "${cmd}" --version >/dev/null 2>&1
+}
+```
+
+## sed 兼容性
+
+- GNU sed: `sed -i 's/old/new/' file`
+- BSD sed: `sed -i '' 's/old/new/' file`
+
+```bash
+if is_gnu_command sed; then
+  sed -i 's/old/new/' file.txt
+else
+  sed -i '' 's/old/new/' file.txt
+fi
+```
+
+## grep 兼容性
+
+- 使用 `-E` 而非 `-P`（BSD 不支持 `-P`）
+- 使用字符类 `[0-9]` 而非 `\d`
+
+```bash
+# Good: 兼容
+grep -E '[0-9]+' file.txt
+
+# Bad: BSD 不支持
+grep -P '\d+' file.txt
+```
+
+## date 兼容性
+
+- GNU date: `date -d "1 day ago"`
+- BSD date: `date -v-1d`
+
+```bash
+if is_gnu_command date; then
+  yesterday=$(date -d "1 day ago" +%Y-%m-%d)
+else
+  yesterday=$(date -v-1d +%Y-%m-%d)
+fi
+```
+
+## 其他工具
+
+- **awk**: 基本功能兼容，避免使用 GNU 特定扩展
+- **find**: `-print0` 和 `-exec` 基本兼容
+- **xargs**: `-0` 选项兼容
+- **sort**: 基本功能兼容，优先使用标准选项
+
+## 兼容性最佳实践
+
+- 优先使用 POSIX 标准语法
+- 使用 `command -v` 检测工具可用性
+- 创建兼容性包装函数
+- 在多个平台上测试
+
+```bash
+# 兼容性包装函数
+safe_sed_replace() {
+  local pattern="$1"
+  local replacement="$2"
+  local file="$3"
+  if is_gnu_command sed; then
+    sed -i "s|${pattern}|${replacement}|g" "${file}"
+  else
+    sed -i '' "s|${pattern}|${replacement}|g" "${file}"
+  fi
+}
+```
+
+## 开发流程
+
+### 跨平台脚本开发步骤
+
+1. 先实现基本功能（单一平台）
+2. 检测运行环境
+3. 处理兼容性差异
+4. 测试多平台
+5. 优化兼容性代码
+
+### 兼容性开发原则
+
+- 优先使用 POSIX 标准语法
+- 检测工具版本和可用性
+- 使用兼容性包装函数
+- 在多个平台上测试
