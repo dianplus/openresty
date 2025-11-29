@@ -95,8 +95,8 @@ Merges AMD64 and ARM64 images into unified multi-architecture manifests.
 ### Phase 1: Architecture-Specific Image Build
 
 1. **Trigger Build**
-   - Manual workflow dispatch (auto-triggers currently disabled)
-   - Version tag creation (currently disabled)
+   - Manual workflow dispatch (primary method)
+   - Auto-triggers (push/tags) currently disabled - see [Iteration 7](ITERATION_PLAN.md#迭代-7自动触发构建-) in iteration plan
 
 2. **Instance Creation**
    - Dynamic spot instance selection using `spot-instance-advisor`
@@ -119,6 +119,7 @@ Merges AMD64 and ARM64 images into unified multi-architecture manifests.
 1. **Trigger Merge**
    - Manual workflow dispatch after both AMD64 and ARM64 builds complete
    - Input target tag (without architecture suffix, e.g., `latest` or `v1.0.0`)
+   - Auto-trigger on build completion currently disabled - see [Iteration 9](ITERATION_PLAN.md#迭代-9多架构合并自动化-) in iteration plan
 
 2. **Merge Execution**
    - Verify architecture-specific images exist (`<tag>-amd64` and `<tag>-arm64`)
@@ -144,7 +145,7 @@ The custom image building workflow creates optimized Ubuntu 24 base images for s
 - **Latest image**: `<prefix>-<arch>-latest` (e.g., `github-runner-ubuntu24-amd64-latest`)
 - **Historical images**: `<prefix>-<arch>-YYYYMMDDHHMM` (e.g., `github-runner-ubuntu24-amd64-202511201200`)
 
-### Configuration
+### Custom Image Configuration
 
 Key environment variables:
 
