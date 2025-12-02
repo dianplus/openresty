@@ -9,6 +9,11 @@ on:
         default: 'latest'
         type: string
 
+  workflow_run:
+    workflows: ["Build AMD64", "Build ARM64"]
+    types:
+      - completed
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dianplus/openresty
@@ -16,6 +21,7 @@ env:
 jobs:
   merge:
     name: Merge Manifests
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,44 +41,109 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine tag for automated workflow_run
+        if: ${{ github.event_name == 'workflow_run' }}
+        id: auto-tag
+        run: |
+          set -euo pipefail
+          # 从触发工作流获取基础标签
+          # 从 head_branch 或 ref 来确定标签
+          REF_NAME="${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_repository.default_branch }}"
+
+          # 根据分支名确定基础标签
+          if [[ "$REF_NAME" == "master" || "$REF_NAME" == "main" ]]; then
+            echo "base_tag=latest" >> $GITHUB_OUTPUT
+          elif [[ "$REF_NAME" == "develop" ]]; then
+            echo "base_tag=develop" >> $GITHUB_OUTPUT
+          elif [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            # 如果是版本标签格式，使用该标签（去掉 -amd64 或 -arm64 后缀）
+            CLEAN_TAG=$(echo "$REF_NAME" | sed 's/-amd64$//' | sed 's/-arm64$//')
+            echo "base_tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
+          else
+            # 默认使用 latest 标签
+            echo "base_tag=latest" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create and push manifest
         run: |
-          # 获取基础标签（从输入或使用 latest）
-          BASE_TAG="${{ github.event.inputs.tag || 'latest' }}"
-          
+          set -euo pipefail
+          # 根据触发事件类型获取基础标签
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # 手动触发时使用输入参数
+            BASE_TAG="${{ github.event.inputs.tag || 'latest' }}"
+          else
+            # 自动触发时使用自动确定的标签
+            BASE_TAG="${{ steps.auto-tag.outputs.base_tag || 'latest' }}"
+          fi
+
           # 构建完整镜像名称
           IMAGE="${REGISTRY}/${IMAGE_NAME}:${BASE_TAG}"
           IMAGE_AMD64="${REGISTRY}/${IMAGE_NAME}:${BASE_TAG}-amd64"
           IMAGE_ARM64="${REGISTRY}/${IMAGE_NAME}:${BASE_TAG}-arm64"
-          
+
           echo "Merging manifests:"
           echo "  Base: ${IMAGE}"
           echo "  AMD64: ${IMAGE_AMD64}"
           echo "  ARM64: ${IMAGE_ARM64}"
-          
+
           # 检查架构特定镜像是否存在
           echo "Checking if architecture-specific images exist..."
-          if ! docker manifest inspect "${IMAGE_AMD64}" > /dev/null 2>&1; then
-            echo "Error: AMD64 image ${IMAGE_AMD64} not found"
+
+          # 添加重试机制，因为镜像推送可能需要一些时间
+          readonly MAX_RETRIES=20
+          readonly RETRY_INTERVAL=15
+
+          # 等待一段时间，让镜像有时间推送完成
+          echo "Waiting for architecture-specific images to be available..."
+          sleep 30
+
+          # 检查 AMD64 镜像
+          AMD64_FOUND=false
+          for i in $(seq 1 $MAX_RETRIES); do
+            if docker manifest inspect "${IMAGE_AMD64}" > /dev/null 2>&1; then
+              echo "✓ AMD64 image found: ${IMAGE_AMD64}"
+              AMD64_FOUND=true
+              break
+            else
+              echo "AMD64 image not found yet (attempt $i/$MAX_RETRIES). Retrying in $RETRY_INTERVAL seconds..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+
+          if [[ "$AMD64_FOUND" != "true" ]]; then
+            echo "Error: AMD64 image ${IMAGE_AMD64} not found after $MAX_RETRIES attempts"
             echo "Please ensure the AMD64 build workflow has completed successfully"
+            echo "This may be because the AMD64 build failed or is still in progress"
             exit 1
           fi
-          echo "✓ AMD64 image found: ${IMAGE_AMD64}"
-          
-          if ! docker manifest inspect "${IMAGE_ARM64}" > /dev/null 2>&1; then
-            echo "Error: ARM64 image ${IMAGE_ARM64} not found"
+
+          # 检查 ARM64 镜像
+          ARM64_FOUND=false
+          for i in $(seq 1 $MAX_RETRIES); do
+            if docker manifest inspect "${IMAGE_ARM64}" > /dev/null 2>&1; then
+              echo "✓ ARM64 image found: ${IMAGE_ARM64}"
+              ARM64_FOUND=true
+              break
+            else
+              echo "ARM64 image not found yet (attempt $i/$MAX_RETRIES). Retrying in $RETRY_INTERVAL seconds..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+
+          if [[ "$ARM64_FOUND" != "true" ]]; then
+            echo "Error: ARM64 image ${IMAGE_ARM64} not found after $MAX_RETRIES attempts"
             echo "Please ensure the ARM64 build workflow has completed successfully"
+            echo "This may be because the ARM64 build failed or is still in progress"
             exit 1
           fi
-          echo "✓ ARM64 image found: ${IMAGE_ARM64}"
-          
+
           # 创建并推送多架构 manifest
           echo "Creating multi-arch manifest..."
           docker buildx imagetools create \
             --tag "${IMAGE}" \
             "${IMAGE_AMD64}" \
             "${IMAGE_ARM64}"
-          
+
           echo "✓ Multi-arch manifest created and pushed: ${IMAGE}"
         env:
           REGISTRY: ${{ env.REGISTRY }}

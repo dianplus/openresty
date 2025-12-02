@@ -164,17 +164,31 @@ Images are pushed to GitHub Container Registry:
 
 ### Building Architecture-Specific Images
 
-1. Manually trigger `Build AMD64` workflow
-2. Manually trigger `Build ARM64` workflow
-3. Wait for both builds to complete
+**Option 1: Automatic Trigger (Recommended)**
+
+- Push changes to `develop` or `master` branch to automatically trigger both AMD64 and ARM64 builds
+- Create a tag with `v*` pattern (e.g., `v1.0.0`) to automatically trigger both AMD64 and ARM64 builds
+
+**Option 2: Manual Trigger**
+
+- Manually trigger `Build AMD64` workflow
+- Manually trigger `Build ARM64` workflow
+- Wait for both builds to complete
 
 ### Merging Multi-Architecture Images
 
-1. Navigate to GitHub Actions page
-2. Find `Merge Multi-Arch Manifests` workflow
-3. Click "Run workflow"
-4. Enter target tag (e.g., `latest` or `v1.0.0`)
-5. Click "Run workflow" to execute merge
+**Option 1: Automatic Trigger (Recommended)**
+
+- After both AMD64 and ARM64 builds complete successfully, the `Merge Multi-Arch Manifests` workflow will automatically run
+- The merged manifest will be tagged and pushed automatically based on the source branch or tag
+
+**Option 2: Manual Trigger**
+
+- Navigate to GitHub Actions page
+- Find `Merge Multi-Arch Manifests` workflow
+- Click "Run workflow"
+- Enter target tag (e.g., `latest` or `v1.0.0`)
+- Click "Run workflow" to execute merge
 
 ### Pulling Images
 
