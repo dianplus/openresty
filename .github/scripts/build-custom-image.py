@@ -1597,7 +1597,7 @@ def main():
 
     # 定义实例标签
     instance_tags = {
-        "GIHUB_RUNNER_TYPE": "aliyun-ecs-spot",
+        "GITHUB_RUNNER_TYPE": "aliyun-ecs-spot",
     }
 
     # 创建临时实例（支持重试机制）

@@ -171,7 +171,7 @@ CMD="aliyun ecs RunInstances \
   --InstanceChargeType PostPaid \
   --SystemDisk.Category cloud_essd \
   --SecurityEnhancementStrategy Deactive \
-  --Tag.1.Key GIHUB_RUNNER_TYPE \
+  --Tag.1.Key GITHUB_RUNNER_TYPE \
   --Tag.1.Value aliyun-ecs-spot"
 
 # 添加 SSH 密钥对（如果提供）
@@ -316,7 +316,7 @@ if [[ -n "${CANDIDATES_FILE}" && -f "${CANDIDATES_FILE}" ]]; then
       --InstanceChargeType PostPaid \
       --SystemDisk.Category cloud_essd \
       --SecurityEnhancementStrategy Deactive \
-      --Tag.1.Key GIHUB_RUNNER_TYPE \
+      --Tag.1.Key GITHUB_RUNNER_TYPE \
       --Tag.1.Value aliyun-ecs-spot"
     
     # 添加 SSH 密钥对（如果提供）

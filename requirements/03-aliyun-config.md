@@ -227,7 +227,7 @@ aliyun ecs AuthorizeSecurityGroup \
       "Resource": "acs:ecs:*:*:instance/*",
       "Condition": {
         "StringEquals": {
-          "acs:ResourceTag/GIHUB_RUNNER_TYPE": [
+          "acs:ResourceTag/GITHUB_RUNNER_TYPE": [
             "aliyun-ecs-spot"
           ]
         }
@@ -266,7 +266,7 @@ aliyun ecs AuthorizeSecurityGroup \
 
 在创建 Spot 实例时，添加以下标签：
 
-- **标签 Key**: `GIHUB_RUNNER_TYPE`
+- **标签 Key**: `GITHUB_RUNNER_TYPE`
 - **标签 Value**: `aliyun-ecs-spot`
 
 此标签用于权限策略的条件匹配，确保实例角色只能删除 CI Runner 实例。
@@ -276,7 +276,7 @@ aliyun ecs AuthorizeSecurityGroup \
 1. 在阿里云 RAM 控制台创建角色（如 `GitHubRunnerSelfDestructRole`）
 2. 为角色授予前述权限策略，以及信任策略
 3. 创建实例时通过 `--RamRoleName` 参数指定实例角色
-4. 实例创建时添加 `GIHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
+4. 实例创建时添加 `GITHUB_RUNNER_TYPE=aliyun-ecs-spot` 标签
 
 **资源命名约定**：
 

@@ -330,7 +330,7 @@ def create_instance(
         "--SecurityEnhancementStrategy",
         "Deactive",
         "--Tag.1.Key",
-        "GIHUB_RUNNER_TYPE",
+        "GITHUB_RUNNER_TYPE",
         "--Tag.1.Value",
         "aliyun-ecs-spot",
     ]
