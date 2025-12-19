@@ -1,8 +1,12 @@
 # Project specific
 /.project
 !/.idea/
-ITERATION_PLAN.md
 spot-instance-advisor
+
+#AI Agents
+.cursor/
+AGENTS.md
+ITERATION_PLAN.md
 
 # Environment variables
 .env
